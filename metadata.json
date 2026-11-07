@@ -1,0 +1,6 @@
+{
+  "name": "PocketCodeD",
+  "description": "High-speed local GGUF coding LLM inference daemon with NDK llama.cpp, Harness Diet middleware, GBNF tool calling, and OpenAI/DeepSeek API gateway.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

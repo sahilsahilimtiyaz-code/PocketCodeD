@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">PocketCodeD</string>
+    <string name="daemon_notification_channel_name">PocketCodeD Inference Server</string>
+    <string name="daemon_notification_channel_desc">Persistent OpenAI and DeepSeek compatible local GGUF inference daemon</string>
+    <string name="daemon_notification_title">PocketCodeD Active • Port %1$d</string>
+    <string name="daemon_notification_text">Model: %1$s | KV: %2$s/%3$s | %4$.1f tok/s</string>
+    <string name="action_stop_daemon">Stop Daemon</string>
+    <string name="tab_control_deck">Control Deck</string>
+    <string name="tab_model_tuner">Model &amp; Tuner</string>
+    <string name="tab_sandbox">API &amp; GBNF</string>
+    <string name="tab_telemetry">Telemetry</string>
+    <string name="firebase_high_thinking_notice">Gemini 4 Argon High-Thinking mode requires Firebase AI Logic. Local C++ GGUF inference is 100% active on-device.</string>
+</resources>
