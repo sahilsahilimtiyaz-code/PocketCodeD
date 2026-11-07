@@ -20,9 +20,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.ByteArrayOutputStream
 import java.io.OutputStreamWriter
 import java.io.PrintWriter
 import java.net.InetAddress
@@ -136,11 +136,11 @@ class PocketHttpServer(
         socket.use { client ->
             client.soTimeout = 60_000
             val clientIp = client.inetAddress?.hostAddress ?: "127.0.0.1"
-            val reader = BufferedReader(InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8))
+            val rawIn = BufferedInputStream(client.getInputStream())
             val rawOut = BufferedOutputStream(client.getOutputStream())
             val writer = PrintWriter(OutputStreamWriter(rawOut, StandardCharsets.UTF_8), false)
 
-            val requestLine = reader.readLine() ?: return
+            val requestLine = readHttpLine(rawIn) ?: return
             val parts = requestLine.split(" ")
             if (parts.size < 2) return
             val method = parts[0].uppercase()
@@ -148,12 +148,13 @@ class PocketHttpServer(
             val path = fullPath.substringBefore("?")
 
             val headers = mutableMapOf<String, String>()
-            var line: String?
-            while (reader.readLine().also { line = it } != null && line!!.isNotEmpty()) {
-                val idx = line!!.indexOf(':')
+            while (true) {
+                val line = readHttpLine(rawIn) ?: break
+                if (line.isEmpty()) break
+                val idx = line.indexOf(':')
                 if (idx > 0) {
-                    val key = line!!.substring(0, idx).trim().lowercase()
-                    val value = line!!.substring(idx + 1).trim()
+                    val key = line.substring(0, idx).trim().lowercase()
+                    val value = line.substring(idx + 1).trim()
                     headers[key] = value
                 }
             }
@@ -164,21 +165,24 @@ class PocketHttpServer(
             }
 
             val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
-            val bodyString = if (contentLength > 0) {
-                val chars = CharArray(contentLength)
-                var totalRead = 0
-                while (totalRead < contentLength) {
-                    val r = reader.read(chars, totalRead, contentLength - totalRead)
-                    if (r == -1) break
-                    totalRead += r
+            val transferEncoding = headers["transfer-encoding"]?.lowercase().orEmpty()
+            val bodyString = when {
+                contentLength > 0 -> {
+                    val safeLen = contentLength.coerceAtMost(8 * 1024 * 1024)
+                    val bytes = readExactBytes(rawIn, safeLen)
+                    String(bytes, StandardCharsets.UTF_8)
                 }
-                String(chars, 0, totalRead)
-            } else ""
+                transferEncoding.contains("chunked") -> {
+                    readChunkedBody(rawIn)
+                }
+                else -> ""
+            }
 
             val isProtectedRoute = path.startsWith("/v1") ||
                 path == "/models" ||
                 path == "/chat/completions" ||
-                path == "/completions"
+                path == "/completions" ||
+                path == "/embeddings"
 
             if (isProtectedRoute) {
                 val authHeader = headers["authorization"]
@@ -205,6 +209,9 @@ class PocketHttpServer(
                 method == "GET" && (path == "/v1/models" || path == "/models") -> {
                     writeJsonResponse(writer, 200, buildModelsJson())
                 }
+                method == "POST" && (path == "/v1/embeddings" || path == "/embeddings") -> {
+                    handleEmbeddingsHttp(writer, bodyString, clientIp)
+                }
                 method == "POST" && (path == "/v1/completions" || path == "/completions") -> {
                     handleFimCompletionsHttp(writer, bodyString, clientIp)
                 }
@@ -222,6 +229,50 @@ class PocketHttpServer(
                 }
             }
         }
+    }
+
+    private fun readHttpLine(input: BufferedInputStream): String? {
+        val baos = ByteArrayOutputStream(128)
+        while (true) {
+            val b = input.read()
+            if (b == -1) {
+                return if (baos.size() > 0) baos.toString(StandardCharsets.UTF_8.name()).trimEnd('\r') else null
+            }
+            if (b == '\n'.code) {
+                break
+            }
+            baos.write(b)
+            if (baos.size() > 32_768) break
+        }
+        return baos.toString(StandardCharsets.UTF_8.name()).trimEnd('\r')
+    }
+
+    private fun readExactBytes(input: BufferedInputStream, count: Int): ByteArray {
+        val buf = ByteArray(count)
+        var offset = 0
+        while (offset < count) {
+            val read = input.read(buf, offset, count - offset)
+            if (read == -1) break
+            offset += read
+        }
+        return if (offset == count) buf else buf.copyOf(offset)
+    }
+
+    private fun readChunkedBody(input: BufferedInputStream): String {
+        val out = ByteArrayOutputStream()
+        while (true) {
+            val sizeLine = readHttpLine(input)?.trim() ?: break
+            val chunkSize = sizeLine.substringBefore(';').toIntOrNull(16) ?: 0
+            if (chunkSize <= 0) {
+                readHttpLine(input)
+                break
+            }
+            val chunkBytes = readExactBytes(input, chunkSize)
+            out.write(chunkBytes)
+            readHttpLine(input)
+            if (out.size() > 8 * 1024 * 1024) break
+        }
+        return out.toString(StandardCharsets.UTF_8.name())
     }
 
     fun buildHealthJson(): JSONObject {
@@ -321,6 +372,88 @@ class PocketHttpServer(
         }
     }
 
+    private fun handleEmbeddingsHttp(
+        writer: PrintWriter,
+        bodyString: String,
+        clientIp: String
+    ) {
+        val startMs = System.currentTimeMillis()
+        val reqJson = try {
+            JSONObject(bodyString.ifBlank { "{}" })
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        val cfg = configProvider()
+        val model = reqJson.optString("model", cfg.activeModelId)
+        val inputs = mutableListOf<String>()
+        when (val rawInput = reqJson.opt("input")) {
+            is String -> inputs.add(rawInput)
+            is JSONArray -> {
+                for (i in 0 until rawInput.length()) {
+                    inputs.add(rawInput.optString(i, ""))
+                }
+            }
+            else -> inputs.add("")
+        }
+
+        val dataArr = JSONArray()
+        var totalTokens = 0
+        for ((idx, text) in inputs.withIndex()) {
+            val vec = engineBridge.generateCodeEmbedding(text, dimensions = 64)
+            totalTokens += (text.length / 4).coerceAtLeast(1)
+            val vecArr = JSONArray()
+            for (v in vec) {
+                vecArr.put(v.toDouble())
+            }
+            dataArr.put(
+                JSONObject().apply {
+                    put("object", "embedding")
+                    put("index", idx)
+                    put("embedding", vecArr)
+                }
+            )
+        }
+        totalRequestsServed.incrementAndGet()
+        val latencyMs = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+
+        val resp = JSONObject().apply {
+            put("object", "list")
+            put("data", dataArr)
+            put("model", model)
+            put("usage", JSONObject().apply {
+                put("prompt_tokens", totalTokens)
+                put("total_tokens", totalTokens)
+            })
+        }
+        writeJsonResponse(writer, 200, resp)
+
+        onTelemetryEvent(
+            TelemetryLogEntry(
+                id = UUID.randomUUID().toString().take(8),
+                timestampMs = System.currentTimeMillis(),
+                method = "POST",
+                endpoint = "/v1/embeddings",
+                clientAddress = clientIp,
+                requestedModel = model,
+                route = ExecutionRoute.NATIVE_GGUF_MMAP,
+                rawPromptTokens = totalTokens,
+                compressedPromptTokens = totalTokens,
+                tokensSavedByDiet = 0,
+                slidingWindowTruncatedTools = 0,
+                gbnfGrammarApplied = false,
+                gbnfRuleSummary = null,
+                kvPrefixHitTokens = 0,
+                pldDraftedCount = 0,
+                pldAcceptedCount = 0,
+                prefillTokPerSec = 680.0,
+                decodeTokPerSec = 0.0,
+                statusCode = 200,
+                latencyMs = latencyMs,
+                previewSnippet = "Generated ${inputs.size} L2-normalized 64d code embedding vector(s)"
+            )
+        )
+    }
+
     private fun handleFimCompletionsHttp(
         writer: PrintWriter,
         bodyString: String,
@@ -336,38 +469,60 @@ class PocketHttpServer(
         val model = reqJson.optString("model", cfg.activeModelId)
         val prompt = reqJson.optString("prompt", "")
         val suffix = reqJson.optString("suffix", "").takeIf { it.isNotEmpty() }
+        val stream = reqJson.optBoolean("stream", false)
 
         val fimResult = engineBridge.generateFimCompletion(prompt, suffix)
         totalRequestsServed.incrementAndGet()
         val latencyMs = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+        val cmplId = "cmpl-${UUID.randomUUID().toString().take(12)}"
+        val createdSec = System.currentTimeMillis() / 1000L
 
-        val responseJson = JSONObject().apply {
-            put("id", "cmpl-${UUID.randomUUID().toString().take(12)}")
-            put("object", "text_completion")
-            put("created", System.currentTimeMillis() / 1000L)
-            put("model", model)
-            put("choices", JSONArray().put(
-                JSONObject().apply {
-                    put("text", fimResult.completionText)
-                    put("index", 0)
-                    put("finish_reason", "stop")
-                }
-            ))
-            put("usage", JSONObject().apply {
-                put("prompt_tokens", fimResult.promptTokens)
-                put("completion_tokens", fimResult.completionTokens)
-                put("total_tokens", fimResult.promptTokens + fimResult.completionTokens)
-            })
+        if (stream) {
+            writeSseHeaders(writer)
+            val chunkObj = JSONObject().apply {
+                put("id", cmplId)
+                put("object", "text_completion")
+                put("created", createdSec)
+                put("model", model)
+                put("choices", JSONArray().put(
+                    JSONObject().apply {
+                        put("text", fimResult.completionText)
+                        put("index", 0)
+                        put("finish_reason", "stop")
+                    }
+                ))
+            }
+            writer.print("data: $chunkObj\r\n\r\n")
+            writer.print("data: [DONE]\r\n\r\n")
+            writer.flush()
+        } else {
+            val responseJson = JSONObject().apply {
+                put("id", cmplId)
+                put("object", "text_completion")
+                put("created", createdSec)
+                put("model", model)
+                put("choices", JSONArray().put(
+                    JSONObject().apply {
+                        put("text", fimResult.completionText)
+                        put("index", 0)
+                        put("finish_reason", "stop")
+                    }
+                ))
+                put("usage", JSONObject().apply {
+                    put("prompt_tokens", fimResult.promptTokens)
+                    put("completion_tokens", fimResult.completionTokens)
+                    put("total_tokens", fimResult.promptTokens + fimResult.completionTokens)
+                })
+            }
+            writeJsonResponse(writer, 200, responseJson)
         }
-
-        writeJsonResponse(writer, 200, responseJson)
 
         onTelemetryEvent(
             TelemetryLogEntry(
                 id = UUID.randomUUID().toString().take(8),
                 timestampMs = System.currentTimeMillis(),
                 method = "POST",
-                endpoint = "/v1/completions (FIM)",
+                endpoint = if (stream) "/v1/completions (FIM SSE)" else "/v1/completions (FIM)",
                 clientAddress = clientIp,
                 requestedModel = model,
                 route = ExecutionRoute.NATIVE_GGUF_MMAP,

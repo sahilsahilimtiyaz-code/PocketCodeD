@@ -167,7 +167,22 @@ class ExampleUnitTest {
         assertTrue(skeleton.contains("AST Skeletonizer elided"))
         assertTrue(skeleton.length < largeSourceDump.length)
     }
+
+    @Test
+    fun `PocketEngineBridge generates L2-normalized 64d code embeddings and memoizes tokenized blocks`() {
+        val bridge = PocketEngineBridge()
+        val codeSnippet = "fun executeZeroCopyInference(promptTokens: IntArray): Flow<String>"
+        val tokensFirst = bridge.tokenizeCode(codeSnippet)
+        val tokensCached = bridge.tokenizeCode(codeSnippet)
+        assertTrue(tokensFirst === tokensCached)
+
+        val embedding = bridge.generateCodeEmbedding(codeSnippet, dimensions = 64)
+        assertEquals(64, embedding.size)
+        val normSq = embedding.sumOf { (it * it).toDouble() }
+        assertTrue(normSq in 0.90..1.10)
+    }
 }
+
 
 
 

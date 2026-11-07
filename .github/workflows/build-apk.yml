@@ -1,0 +1,119 @@
+name: Build PocketCodeD Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Compile, Test & Package PocketCodeD APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Set up Android SDK & NDK Toolchain
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK Platform 36, NDK & CMake
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1" || true
+
+      - name: Setup Gradle Build Cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure .env and Keystores Exist for CI Build
+        run: |
+          if [ ! -f ".env" ]; then
+            cp .env.example .env
+          fi
+          if [ ! -f "debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          if [ ! -f "my-upload-key.jks" ]; then
+            keytool -genkeypair -v \
+              -keystore my-upload-key.jks \
+              -storepass android \
+              -alias upload \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=PocketCodeD Release,O=PocketCodeD,C=US"
+          fi
+
+      - name: Run Unit Tests (GGUF v3 mmap, Harness Diet, AST Skeletonizer, KV Snapshot)
+        env:
+          STORE_PASSWORD: android
+          KEY_PASSWORD: android
+        run: |
+          if [ -x "./gradlew" ]; then
+            ./gradlew :app:testDebugUnitTest --no-daemon
+          else
+            gradle :app:testDebugUnitTest --no-daemon
+          fi
+
+      - name: Build Debug & Release APKs
+        env:
+          STORE_PASSWORD: android
+          KEY_PASSWORD: android
+        run: |
+          if [ -x "./gradlew" ]; then
+            ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon
+          else
+            gradle :app:assembleDebug :app:assembleRelease --no-daemon
+          fi
+          mkdir -p dist-apks
+          cp app/build/outputs/apk/debug/app-debug.apk dist-apks/PocketCodeD-debug.apk
+          if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
+            cp app/build/outputs/apk/release/app-release.apk dist-apks/PocketCodeD-release.apk
+          elif [ -f "app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
+            cp app/build/outputs/apk/release/app-release-unsigned.apk dist-apks/PocketCodeD-release-unsigned.apk
+          fi
+          ls -lh dist-apks/
+
+      - name: Upload PocketCodeD APK Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketCodeD-Android-APKs
+          path: dist-apks/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release on Tag Push
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-apks/*.apk
+          generate_release_notes: true

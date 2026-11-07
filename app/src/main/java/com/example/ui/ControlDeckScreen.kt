@@ -2,6 +2,7 @@ package com.example.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,15 +25,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
@@ -51,14 +52,20 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
@@ -76,6 +83,7 @@ import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.ArgonViolet
 import com.example.ui.theme.CrimsonAlert
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.GlassHighlight
 import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.ObsidianVoid
 import com.example.ui.theme.PhosphorEmerald
@@ -83,6 +91,34 @@ import com.example.ui.theme.TerminalBorder
 import com.example.ui.theme.TerminalCardElevated
 import com.example.ui.theme.TerminalSlate
 import com.example.ui.theme.TerminalTextSecondary
+import kotlin.math.sin
+
+private const val GITHUB_WORKFLOW_SNIPPET = """# .github/workflows/build-apk.yml (Auto-runs on git push & PR)
+name: Build PocketCodeD Android APK
+on:
+  push:
+    branches: [ main, master, develop, "**" ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: "temurin", java-version: "17" }
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test & Assemble Debug + Release APKs
+        run: |
+          cp -n .env.example .env || true
+          gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PocketCodeD-Android-APKs
+          path: app/build/outputs/apk/**/*.apk"""
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -107,6 +143,7 @@ fun ControlDeckScreen(
 ) {
     val clipboard = LocalClipboardManager.current
     var showConfigPreview by remember { mutableStateOf(true) }
+    var selectedSnippetTab by remember { mutableIntStateOf(0) } // 0=opencode.json, 1=Termux/DeepSeek, 2=GitHub APK CI
     var newKeyLabel by remember { mutableStateOf("") }
 
     LazyColumn(
@@ -134,7 +171,7 @@ fun ControlDeckScreen(
             )
         }
 
-        // 2. Real-Time Hardware, mmap & Quantized KV Cache HUD
+        // 2. Real-Time Hardware, mmap & Quantized KV Cache HUD with Custom Canvas Visualizer
         item {
             HardwareAndKvHudCard(
                 hardwareProfile = hardwareProfile,
@@ -144,13 +181,13 @@ fun ControlDeckScreen(
             )
         }
 
-        // 3. One-Tap Harness Config Generator (opencode.json + Termux)
+        // 3. One-Tap Harness & GitHub Actions APK CI/CD Config Generator
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = TerminalSlate),
-                border = BorderStroke(1.dp, TerminalBorder),
-                shape = RoundedCornerShape(16.dp)
+                border = BorderStroke(1.dp, GlassHighlight.copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(18.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -161,18 +198,18 @@ fun ControlDeckScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.Code,
-                                contentDescription = "Harness Config",
+                                contentDescription = "Harness & CI Config",
                                 tint = CyberCyan
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    text = "One-Tap Harness Config Generator",
+                                    text = "One-Tap Harness & GitHub APK CI/CD",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "opencode • Aider • Continue • DeepSeek Harnesses",
+                                    text = "opencode.json • DeepSeek / Aider • .github/workflows/build-apk.yml",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TerminalTextSecondary
                                 )
@@ -189,6 +226,7 @@ fun ControlDeckScreen(
                     ) {
                         Button(
                             onClick = {
+                                selectedSnippetTab = 0
                                 clipboard.setText(AnnotatedString(opencodeJsonSnippet))
                                 onStatusToast("Copied valid opencode.json config to clipboard!")
                             },
@@ -204,13 +242,14 @@ fun ControlDeckScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Copy opencode.json Config", fontWeight = FontWeight.Bold)
+                            Text("Copy opencode.json", fontWeight = FontWeight.Bold)
                         }
 
                         OutlinedButton(
                             onClick = {
+                                selectedSnippetTab = 1
                                 clipboard.setText(AnnotatedString(termuxScriptSnippet))
-                                onStatusToast("Copied Termux export & Aider command!")
+                                onStatusToast("Copied DeepSeek / Termux / Aider script!")
                             },
                             border = BorderStroke(1.dp, CyberCyan),
                             modifier = Modifier.testTag("copy_termux_script_button")
@@ -222,7 +261,26 @@ fun ControlDeckScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Copy Termux Script", color = CyberCyan)
+                            Text("DeepSeek / Termux Env", color = CyberCyan)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                selectedSnippetTab = 2
+                                clipboard.setText(AnnotatedString(GITHUB_WORKFLOW_SNIPPET))
+                                onStatusToast("Copied .github/workflows/build-apk.yml workflow!")
+                            },
+                            border = BorderStroke(1.dp, ArgonViolet),
+                            modifier = Modifier.testTag("copy_github_workflow_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Build,
+                                contentDescription = "Copy GitHub Actions APK Workflow",
+                                tint = ArgonViolet,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("GitHub APK Action", color = ArgonViolet)
                         }
 
                         OutlinedButton(
@@ -230,25 +288,35 @@ fun ControlDeckScreen(
                             border = BorderStroke(1.dp, TerminalBorder),
                             modifier = Modifier.testTag("toggle_config_preview_button")
                         ) {
-                            Text(if (showConfigPreview) "Hide JSON" else "Preview JSON")
+                            Text(if (showConfigPreview) "Hide Code" else "Show Code")
                         }
                     }
 
                     if (showConfigPreview) {
                         Spacer(modifier = Modifier.height(12.dp))
+                        val activeCodeText = when (selectedSnippetTab) {
+                            1 -> termuxScriptSnippet
+                            2 -> GITHUB_WORKFLOW_SNIPPET
+                            else -> opencodeJsonSnippet
+                        }
+                        val activeCodeColor = when (selectedSnippetTab) {
+                            1 -> CyberCyan
+                            2 -> ArgonViolet
+                            else -> PhosphorEmerald
+                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(ObsidianVoid)
-                                .border(1.dp, TerminalBorder, RoundedCornerShape(10.dp))
+                                .border(1.dp, activeCodeColor.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
                                 .padding(12.dp)
                         ) {
                             Text(
-                                text = opencodeJsonSnippet,
+                                text = activeCodeText,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontFamily = JetBrainsMonoFamily,
-                                color = PhosphorEmerald
+                                color = activeCodeColor
                             )
                         }
                     }
@@ -261,8 +329,8 @@ fun ControlDeckScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = TerminalSlate),
-                border = BorderStroke(1.dp, TerminalBorder),
-                shape = RoundedCornerShape(16.dp)
+                border = BorderStroke(1.dp, GlassHighlight.copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(18.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -279,7 +347,7 @@ fun ControlDeckScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Enforced on all /v1/* routes via Authorization: Bearer sk-mobile-...",
+                                text = "Enforced on all /v1/ and /chat/completions routes via Bearer sk-mobile-...",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TerminalTextSecondary
                             )
@@ -325,7 +393,7 @@ fun ControlDeckScreen(
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp),
                             color = TerminalCardElevated,
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, TerminalBorder)
                         ) {
                             Row(
@@ -339,7 +407,8 @@ fun ControlDeckScreen(
                                     Text(
                                         text = record.label,
                                         style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Bold
                                     )
                                     Text(
                                         text = "${record.maskedKey} • ${record.requestCount} reqs",
@@ -403,8 +472,8 @@ private fun ServerHeroCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, statusColor.copy(alpha = 0.6f)),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.5.dp, statusColor.copy(alpha = 0.65f)),
         colors = CardDefaults.cardColors(containerColor = TerminalSlate)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
@@ -412,10 +481,10 @@ private fun ServerHeroCard(
                 painter = painterResource(id = R.drawable.img_daemon_hero_1794064302740),
                 contentDescription = "PocketCodeD ARM64 Inference Architecture",
                 contentScale = ContentScale.Crop,
-                alpha = 0.25f,
+                alpha = 0.28f,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(230.dp)
+                    .height(255.dp)
             )
             Box(
                 modifier = Modifier
@@ -423,8 +492,9 @@ private fun ServerHeroCard(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                ObsidianVoid.copy(alpha = 0.55f),
-                                TerminalSlate.copy(alpha = 0.96f)
+                                ObsidianVoid.copy(alpha = 0.45f),
+                                TerminalSlate.copy(alpha = 0.92f),
+                                TerminalSlate
                             )
                         )
                     )
@@ -483,18 +553,31 @@ private fun ServerHeroCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "mmap=ON • mlock=OFF • FlashAttn=ON • KV: K=${engineConfig.typeK.label} / V=${engineConfig.typeV.label} • PLD=${if (engineConfig.enablePld) "ON" else "OFF"}",
+                        text = "6-Layer Rolling mmap • FlashAttn=ON • KV: K=${engineConfig.typeK.label} / V=${engineConfig.typeV.label} • PLD+LayerSkip=${if (engineConfig.enablePld) "ON" else "OFF"}",
                         style = MaterialTheme.typography.labelSmall,
                         color = CyberCyan
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Supported OpenAI & DeepSeek Route Badges
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        RoutePill("/v1/chat/completions", PhosphorEmerald)
+                        RoutePill("/v1/completions (FIM)", CyberCyan)
+                        RoutePill("/v1/embeddings (64d)", ArgonViolet)
+                        RoutePill("/chat/completions (DeepSeek)", AmberWarning)
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
                     // Endpoint URL Bar + Copy button
                     Surface(
-                        color = ObsidianVoid.copy(alpha = 0.85f),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, TerminalBorder),
+                        color = ObsidianVoid.copy(alpha = 0.88f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, GlassHighlight),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -506,14 +589,15 @@ private fun ServerHeroCard(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "OPENAI / DEEPSEEK COMPATIBLE BASE URL",
+                                    text = "OPENAI / DEEPSEEK / OPENCODE BASE URL",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TerminalTextSecondary
                                 )
                                 Text(
                                     text = baseUrl,
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = PhosphorEmerald
+                                    color = PhosphorEmerald,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                             IconButton(
@@ -600,6 +684,22 @@ private fun ServerHeroCard(
 }
 
 @Composable
+private fun RoutePill(text: String, accent: Color) {
+    Surface(
+        color = accent.copy(alpha = 0.14f),
+        shape = RoundedCornerShape(6.dp),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.45f))
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = accent,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+        )
+    }
+}
+
+@Composable
 private fun HardwareAndKvHudCard(
     hardwareProfile: HardwareProfile?,
     engineConfig: EngineConfig,
@@ -614,12 +714,13 @@ private fun HardwareAndKvHudCard(
     val kvUsed = engineMetrics.kvTokensUsed
     val kvCap = engineMetrics.kvTokensCapacity.coerceAtLeast(1)
     val kvFraction = (kvUsed.toFloat() / kvCap.toFloat()).coerceIn(0f, 1f)
+    val pinnedFraction = (engineMetrics.pinnedPrefixTokens.toFloat() / kvCap.toFloat()).coerceIn(0f, 1f)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = TerminalSlate),
-        border = BorderStroke(1.dp, TerminalBorder),
-        shape = RoundedCornerShape(16.dp)
+        border = BorderStroke(1.dp, GlassHighlight.copy(alpha = 0.65f)),
+        shape = RoundedCornerShape(18.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -641,7 +742,7 @@ private fun HardwareAndKvHudCard(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${hardwareProfile?.socSummary ?: "ARM64"} • ${hardwareProfile?.bigCoresCount ?: 4}/${hardwareProfile?.totalCpuCores ?: 8} Big Cores",
+                            text = "${hardwareProfile?.socSummary ?: "ARM64"} • ${hardwareProfile?.bigCoresCount ?: 4}/${hardwareProfile?.totalCpuCores ?: 8} Big Cores • RSS Cap: ${engineMetrics.residentRssCapBytes / (1024 * 1024)}MB",
                             style = MaterialTheme.typography.labelSmall,
                             color = TerminalTextSecondary
                         )
@@ -651,12 +752,13 @@ private fun HardwareAndKvHudCard(
                 Surface(
                     color = PhosphorEmerald.copy(alpha = 0.16f),
                     shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.5f))
+                    border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.55f))
                 ) {
                     Text(
                         text = "-${engineMetrics.kvCacheReductionPercent}% KV RAM",
                         style = MaterialTheme.typography.labelSmall,
                         color = PhosphorEmerald,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -670,13 +772,14 @@ private fun HardwareAndKvHudCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Device RAM: ${usedRam}MB used / ${totalRam}MB (${availRam}MB free)",
+                    text = "System RAM: ${usedRam}MB / ${totalRam}MB (${availRam}MB free)",
                     style = MaterialTheme.typography.labelSmall
                 )
                 Text(
                     text = "${(ramFraction * 100).toInt()}%",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (ramFraction > 0.85f) AmberWarning else PhosphorEmerald
+                    color = if (ramFraction > 0.85f) AmberWarning else PhosphorEmerald,
+                    fontWeight = FontWeight.Bold
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
@@ -702,23 +805,76 @@ private fun HardwareAndKvHudCard(
                     style = MaterialTheme.typography.labelSmall
                 )
                 Text(
-                    text = "${engineMetrics.kvCacheBytes / (1024 * 1024)}MB",
+                    text = "${engineMetrics.kvCacheBytes / (1024 * 1024)}MB (-${engineMetrics.kvCacheSavedBytes / (1024 * 1024)}MB saved)",
                     style = MaterialTheme.typography.labelSmall,
-                    color = CyberCyan
+                    color = CyberCyan,
+                    fontWeight = FontWeight.Bold
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            LinearProgressIndicator(
-                progress = { kvFraction.coerceAtLeast(0.06f) },
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Custom Canvas Segmented KV + Throughput Waveform Visualizer
+            Surface(
+                color = ObsidianVoid,
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, TerminalBorder),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp)),
-                color = CyberCyan,
-                trackColor = ObsidianVoid
-            )
+                    .height(54.dp)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                    val w = size.width
+                    val h = size.height
 
-            Spacer(modifier = Modifier.height(14.dp))
+                    // Top segmented bar: Pinned Prefix (Emerald) + Dynamic Context (Cyan) + Free Quantized Slot
+                    val barHeight = 8.dp.toPx()
+                    drawRoundRect(
+                        color = TerminalCardElevated,
+                        topLeft = Offset(0f, 0f),
+                        size = Size(w, barHeight),
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                    )
+                    val pinnedW = (w * pinnedFraction.coerceAtLeast(0.08f)).coerceAtMost(w)
+                    val activeW = (w * kvFraction.coerceAtLeast(0.16f)).coerceAtMost(w)
+                    drawRoundRect(
+                        color = CyberCyan.copy(alpha = 0.65f),
+                        topLeft = Offset(0f, 0f),
+                        size = Size(activeW, barHeight),
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                    )
+                    drawRoundRect(
+                        color = PhosphorEmerald,
+                        topLeft = Offset(0f, 0f),
+                        size = Size(pinnedW, barHeight),
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                    )
+
+                    // Bottom dual-trace throughput waveform (Prefill & Decode PLD)
+                    val waveTop = barHeight + 6.dp.toPx()
+                    val waveH = (h - waveTop).coerceAtLeast(10f)
+                    val pathEmerald = Path()
+                    val pathCyan = Path()
+                    val steps = 36
+                    val speedFactor = (engineMetrics.pldSpeedupMultiplier.toFloat()).coerceIn(1f, 3.2f)
+                    for (i in 0..steps) {
+                        val x = (w / steps) * i
+                        val norm = i.toFloat() / steps.toFloat()
+                        val y1 = waveTop + waveH * 0.5f + sin(norm * 6.28f * speedFactor) * (waveH * 0.36f)
+                        val y2 = waveTop + waveH * 0.5f + sin(norm * 9.42f + 1.1f) * (waveH * 0.28f)
+                        if (i == 0) {
+                            pathEmerald.moveTo(x, y1)
+                            pathCyan.moveTo(x, y2)
+                        } else {
+                            pathEmerald.lineTo(x, y1)
+                            pathCyan.lineTo(x, y2)
+                        }
+                    }
+                    drawPath(pathCyan, color = CyberCyan.copy(alpha = 0.5f), style = Stroke(width = 1.6.dp.toPx()))
+                    drawPath(pathEmerald, color = PhosphorEmerald.copy(alpha = 0.85f), style = Stroke(width = 2.dp.toPx()))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             // 4 Metric Pills
             Row(
@@ -739,7 +895,7 @@ private fun HardwareAndKvHudCard(
                 )
                 MetricTile(
                     modifier = Modifier.weight(1f),
-                    label = "PLD SPEEDUP",
+                    label = "SPEEDUP",
                     value = "${String.format("%.2f", engineMetrics.pldSpeedupMultiplier)}x",
                     accent = ArgonViolet
                 )
@@ -764,11 +920,11 @@ private fun MetricTile(
     Surface(
         modifier = modifier,
         color = ObsidianVoid,
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, TerminalBorder)
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.35f))
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 9.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(

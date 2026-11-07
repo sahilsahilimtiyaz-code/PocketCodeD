@@ -31,6 +31,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +45,7 @@ import com.example.model.TelemetryLogEntry
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.ArgonViolet
 import com.example.ui.theme.CyberCyan
+import com.example.ui.theme.GlassHighlight
 import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.ObsidianVoid
 import com.example.ui.theme.PhosphorEmerald
@@ -72,8 +74,8 @@ fun TelemetryConsoleScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = TerminalSlate),
-                border = BorderStroke(1.dp, TerminalBorder),
-                shape = RoundedCornerShape(16.dp)
+                border = BorderStroke(1.dp, GlassHighlight.copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(18.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -117,6 +119,26 @@ fun TelemetryConsoleScreen(
                             Text("Clear", style = MaterialTheme.typography.labelSmall)
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TelemetryBadge(
+                            text = "Events: ${logs.size}",
+                            color = PhosphorEmerald
+                        )
+                        TelemetryBadge(
+                            text = "PLD Accepted: ${engineMetrics.pldAcceptedTokens}/${engineMetrics.pldDraftedTokens}",
+                            color = ArgonViolet
+                        )
+                        TelemetryBadge(
+                            text = "OOM Guards: ${engineMetrics.oomTrimEventsCount}",
+                            color = AmberWarning
+                        )
+                    }
                 }
             }
         }
@@ -127,23 +149,23 @@ fun TelemetryConsoleScreen(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = TerminalSlate),
                     border = BorderStroke(1.dp, TerminalBorder),
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(24.dp),
+                            .padding(28.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
                             imageVector = Icons.Default.Terminal,
                             contentDescription = "No telemetry events",
                             tint = TerminalTextSecondary,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(38.dp)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Awaiting incoming opencode / Aider / Sandbox requests...",
+                            text = "Awaiting incoming opencode / DeepSeek / Aider / Sandbox requests...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TerminalTextSecondary
                         )
@@ -161,7 +183,9 @@ fun TelemetryConsoleScreen(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TelemetryLogCard(entry: TelemetryLogEntry) {
-    val timeFormatter = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
+    val formattedTime = remember(entry.timestampMs) {
+        SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date(entry.timestampMs))
+    }
     val routeColor = when (entry.route) {
         ExecutionRoute.NATIVE_GGUF_MMAP -> PhosphorEmerald
         ExecutionRoute.HYBRID_GEMINI_HIGH_THINKING -> ArgonViolet
@@ -170,8 +194,8 @@ private fun TelemetryLogCard(entry: TelemetryLogEntry) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = TerminalSlate),
-        border = BorderStroke(1.dp, routeColor.copy(alpha = 0.45f)),
-        shape = RoundedCornerShape(14.dp)
+        border = BorderStroke(1.dp, routeColor.copy(alpha = 0.5f)),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -186,7 +210,7 @@ private fun TelemetryLogCard(entry: TelemetryLogEntry) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${timeFormatter.format(Date(entry.timestampMs))} • ${entry.latencyMs}ms",
+                    text = "$formattedTime • ${entry.latencyMs}ms",
                     style = MaterialTheme.typography.labelSmall,
                     color = TerminalTextSecondary
                 )
@@ -238,9 +262,9 @@ private fun TelemetryLogCard(entry: TelemetryLogEntry) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(10.dp))
                     .background(ObsidianVoid)
-                    .border(1.dp, TerminalBorder, RoundedCornerShape(8.dp))
+                    .border(1.dp, TerminalBorder, RoundedCornerShape(10.dp))
                     .padding(10.dp)
             ) {
                 Text(
