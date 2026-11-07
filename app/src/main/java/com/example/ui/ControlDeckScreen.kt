@@ -109,16 +109,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: "temurin", java-version: "17" }
-      - uses: android-actions/setup-android@v3
+      - name: Accept Android SDK Licenses Non-Interactively
+        run: |
+          mkdir -p "${'$'}ANDROID_HOME/licenses"
+          printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > "${'$'}ANDROID_HOME/licenses/android-sdk-license"
       - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.11.1" }
       - name: Test & Assemble Debug + Release APKs
         run: |
           cp -n .env.example .env || true
-          gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
+          gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: PocketCodeD-Android-APKs
-          path: app/build/outputs/apk/**/*.apk"""
+          path: dist-apks/*.apk"""
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

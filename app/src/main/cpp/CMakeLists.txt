@@ -23,10 +23,6 @@ if(${ANDROID_ABI} STREQUAL "arm64-v8a")
     )
     add_compile_definitions(
         GGML_USE_CPU_AARCH64=1
-        __ARM_NEON=1
-        __ARM_FEATURE_DOTPROD=1
-        __ARM_FEATURE_MATMUL_INT8=1
-        __ARM_FEATURE_FP16_VECTOR_ARITHMETIC=1
     )
 elseif(${ANDROID_ABI} STREQUAL "x86_64")
     add_compile_options(-O3 -DNDEBUG -ffast-math -mavx2 -mfma -mf16c)

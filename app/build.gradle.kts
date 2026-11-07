@@ -10,9 +10,10 @@ plugins {
 
 val sdkRoot = System.getenv("ANDROID_SDK_ROOT") ?: System.getenv("ANDROID_HOME") ?: ""
 val hasNdkToolchain =
-  sdkRoot.isNotEmpty() &&
+  System.getenv("POCKET_ENABLE_NDK_CMAKE") == "true" &&
+    sdkRoot.isNotEmpty() &&
     file("$sdkRoot/ndk").exists() &&
-    file("$sdkRoot/cmake").exists()
+    file("$sdkRoot/cmake/3.22.1").exists()
 
 android {
   namespace = "com.example"
