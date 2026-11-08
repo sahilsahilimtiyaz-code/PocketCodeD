@@ -185,7 +185,7 @@ fun PocketCodeDApp(
                     isServerRunning = isServerRunning,
                     port = serverPort,
                     bindLanMode = bindLanMode,
-                    kvReductionPct = engineMetrics.kvCacheReductionPercent,
+                    activeModelId = engineConfig.activeModelId,
                     decodeTps = if (engineMetrics.lastDecodeTokPerSec > 0) engineMetrics.lastDecodeTokPerSec else 54.2
                 )
             },
@@ -262,9 +262,11 @@ fun PocketCodeDApp(
                                 onRevokeKey = viewModel::revokeApiKey,
                                 onRequestBatteryBypass = {
                                     onRequestBatteryOptimizationBypass()
-                                    viewModel.showStatusMessage("Requested Android Doze / WakeLock exemption")
+                                    viewModel.showStatusMessage("Requested background battery exemption")
                                 },
-                                onStatusToast = viewModel::showStatusMessage
+                                onStatusToast = viewModel::showStatusMessage,
+                                onOpenModelsTab = { viewModel.selectTab(PocketTab.MODEL_TUNER) },
+                                onOpenTestTab = { viewModel.selectTab(PocketTab.API_SANDBOX) }
                             )
 
                             PocketTab.MODEL_TUNER -> ModelTunerScreen(
@@ -272,6 +274,9 @@ fun PocketCodeDApp(
                                 engineConfig = engineConfig,
                                 engineMetrics = engineMetrics,
                                 benchmarkReport = benchmarkReport,
+                                baseUrl = viewModel.getActiveBaseUrl(),
+                                activeApiKey = apiKeys.firstOrNull()?.key ?: "sk-mobile-default",
+                                opencodeJsonSnippet = viewModel.getOpencodeJsonConfig(),
                                 onActivateModel = viewModel::activateModel,
                                 onSynthesizeLocalGguf = viewModel::synthesizeOfflineGgufAndLoad,
                                 onStartDownload = viewModel::startModelDownload,
@@ -293,7 +298,9 @@ fun PocketCodeDApp(
                                 onSaveKvSnapshot = viewModel::saveKvCacheSnapshotToDisk,
                                 onRestoreKvSnapshot = viewModel::restoreKvCacheSnapshotFromDisk,
                                 onRunBenchmark = viewModel::runHyperEdgeBenchmark,
-                                onTriggerOomTrimTest = viewModel::triggerEmergencyOomTrimTest
+                                onTriggerOomTrimTest = viewModel::triggerEmergencyOomTrimTest,
+                                onStatusToast = viewModel::showStatusMessage,
+                                onOpenDaemonTab = { viewModel.selectTab(PocketTab.CONTROL_DECK) }
                             )
 
                             PocketTab.API_SANDBOX -> ApiGbnfSandboxScreen(
@@ -302,7 +309,8 @@ fun PocketCodeDApp(
                                 onUpdatePrompt = viewModel::updateSandboxPrompt,
                                 onUpdateFimPrefix = viewModel::updateSandboxFimPrefix,
                                 onUpdateFimSuffix = viewModel::updateSandboxFimSuffix,
-                                onRunPipeline = viewModel::runLiveSandboxPipeline
+                                onRunPipeline = viewModel::runLiveSandboxPipeline,
+                                onStatusToast = viewModel::showStatusMessage
                             )
 
                             PocketTab.TELEMETRY -> TelemetryConsoleScreen(
@@ -324,7 +332,7 @@ private fun PocketTopStatusHeader(
     isServerRunning: Boolean,
     port: Int,
     bindLanMode: Boolean,
-    kvReductionPct: Int,
+    activeModelId: String,
     decodeTps: Double
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "daemonPulse")
@@ -364,7 +372,10 @@ private fun PocketTopStatusHeader(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp)
+                ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(18.dp)) {
                         Box(
                             modifier = Modifier
@@ -390,20 +401,20 @@ private fun PocketTopStatusHeader(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Surface(
-                                color = ArgonViolet.copy(alpha = 0.18f),
+                                color = PhosphorEmerald.copy(alpha = 0.16f),
                                 shape = RoundedCornerShape(6.dp),
-                                border = BorderStroke(1.dp, ArgonViolet.copy(alpha = 0.5f))
+                                border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.5f))
                             ) {
                                 Text(
-                                    text = "HYPER-EDGE v2",
+                                    text = "LOCAL AI SERVER",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = ArgonViolet,
+                                    color = PhosphorEmerald,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
                         }
                         Text(
-                            text = "ARM64 NDK • 6-Layer mmap Stream • PLD+LayerSkip • GBNF",
+                            text = "Model: $activeModelId",
                             style = MaterialTheme.typography.labelSmall,
                             color = TerminalTextSecondary
                         )
@@ -420,7 +431,7 @@ private fun PocketTopStatusHeader(
                         border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.55f))
                     ) {
                         Text(
-                            text = "${String.format("%.1f", decodeTps)} t/s",
+                            text = "${String.format("%.1f", decodeTps)} tok/s",
                             style = MaterialTheme.typography.labelSmall,
                             color = PhosphorEmerald,
                             fontWeight = FontWeight.Bold,
@@ -431,16 +442,17 @@ private fun PocketTopStatusHeader(
                     Surface(
                         color = ObsidianVoid,
                         shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, CyberCyan.copy(alpha = 0.6f))
+                        border = BorderStroke(1.dp, statusDotColor.copy(alpha = 0.65f))
                     ) {
                         Text(
                             text = if (isServerRunning) {
-                                "${if (bindLanMode) "LAN" else "127.0.0.1"}:$port • -$kvReductionPct% KV"
+                                "${if (bindLanMode) "Wi-Fi" else "Local"}:$port"
                             } else {
-                                "STANDBY"
+                                "STOPPED"
                             },
                             style = MaterialTheme.typography.labelSmall,
-                            color = CyberCyan,
+                            color = statusDotColor,
+                            fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                         )
                     }

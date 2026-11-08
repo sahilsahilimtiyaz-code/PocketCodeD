@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -26,9 +27,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Memory
@@ -42,6 +45,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -143,12 +147,17 @@ fun ControlDeckScreen(
     onGenerateKey: (String) -> Unit,
     onRevokeKey: (String) -> Unit,
     onRequestBatteryBypass: () -> Unit,
-    onStatusToast: (String) -> Unit
+    onStatusToast: (String) -> Unit,
+    onOpenModelsTab: () -> Unit = {},
+    onOpenTestTab: () -> Unit = {}
 ) {
     val clipboard = LocalClipboardManager.current
-    var showConfigPreview by remember { mutableStateOf(true) }
+    var showConfigPreview by remember { mutableStateOf(false) }
     var selectedSnippetTab by remember { mutableIntStateOf(0) } // 0=opencode.json, 1=Termux/DeepSeek, 2=GitHub APK CI
     var newKeyLabel by remember { mutableStateOf("") }
+    var showKeyVaultDetails by remember { mutableStateOf(false) }
+
+    val primaryApiKey = apiKeys.firstOrNull()?.key ?: "sk-mobile-default"
 
     LazyColumn(
         modifier = Modifier
@@ -157,35 +166,35 @@ fun ControlDeckScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Hero Server Control Deck Card
+        // 1. Easy 3-Step Quick Start & Live Connection Hub
         item {
-            ServerHeroCard(
+            QuickSetupHeroCard(
                 isServerRunning = isServerRunning,
                 bindLanMode = bindLanMode,
                 serverPort = serverPort,
                 baseUrl = baseUrl,
-                engineConfig = engineConfig,
+                primaryApiKey = primaryApiKey,
+                activeModelId = engineConfig.activeModelId,
                 onToggleServer = onToggleServer,
                 onSetBindLan = onSetBindLan,
                 onCopyBaseUrl = {
                     clipboard.setText(AnnotatedString(baseUrl))
                     onStatusToast("Copied Base URL: $baseUrl")
                 },
-                onRequestBatteryBypass = onRequestBatteryBypass
+                onCopyApiKey = {
+                    clipboard.setText(AnnotatedString(primaryApiKey))
+                    onStatusToast("Copied API Key to clipboard!")
+                },
+                onCopyModelId = {
+                    clipboard.setText(AnnotatedString(engineConfig.activeModelId))
+                    onStatusToast("Copied Model ID: ${engineConfig.activeModelId}")
+                },
+                onOpenModelsTab = onOpenModelsTab,
+                onOpenTestTab = onOpenTestTab
             )
         }
 
-        // 2. Real-Time Hardware, mmap & Quantized KV Cache HUD with Custom Canvas Visualizer
-        item {
-            HardwareAndKvHudCard(
-                hardwareProfile = hardwareProfile,
-                engineConfig = engineConfig,
-                engineMetrics = engineMetrics,
-                totalDietTokensSaved = totalDietTokensSaved
-            )
-        }
-
-        // 3. One-Tap Harness & GitHub Actions APK CI/CD Config Generator
+        // 2. One-Tap Setup for OpenCode, DeepSeek, Aider & Termux
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -194,30 +203,24 @@ fun ControlDeckScreen(
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Code,
-                                contentDescription = "Harness & CI Config",
-                                tint = CyberCyan
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Code,
+                            contentDescription = "Quick Tool Setup",
+                            tint = CyberCyan
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "One-Tap Coding Tool Setup",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = "One-Tap Harness & GitHub APK CI/CD",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "opencode.json • DeepSeek / Aider • .github/workflows/build-apk.yml",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TerminalTextSecondary
-                                )
-                            }
+                            Text(
+                                text = "Tap a button below to copy ready-to-use config with your URL, Key & Model pre-filled",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TerminalTextSecondary
+                            )
                         }
                     }
 
@@ -232,7 +235,7 @@ fun ControlDeckScreen(
                             onClick = {
                                 selectedSnippetTab = 0
                                 clipboard.setText(AnnotatedString(opencodeJsonSnippet))
-                                onStatusToast("Copied valid opencode.json config to clipboard!")
+                                onStatusToast("Copied opencode.json config to clipboard!")
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = PhosphorEmerald,
@@ -246,26 +249,26 @@ fun ControlDeckScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Copy opencode.json", fontWeight = FontWeight.Bold)
+                            Text("1. Copy opencode.json", fontWeight = FontWeight.Bold)
                         }
 
                         OutlinedButton(
                             onClick = {
                                 selectedSnippetTab = 1
                                 clipboard.setText(AnnotatedString(termuxScriptSnippet))
-                                onStatusToast("Copied DeepSeek / Termux / Aider script!")
+                                onStatusToast("Copied DeepSeek / Termux / Aider commands!")
                             },
                             border = BorderStroke(1.dp, CyberCyan),
                             modifier = Modifier.testTag("copy_termux_script_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Terminal,
-                                contentDescription = "Copy Termux Script",
+                                contentDescription = "Copy Terminal Commands",
                                 tint = CyberCyan,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("DeepSeek / Termux Env", color = CyberCyan)
+                            Text("2. Copy Terminal Commands", color = CyberCyan)
                         }
 
                         OutlinedButton(
@@ -292,43 +295,56 @@ fun ControlDeckScreen(
                             border = BorderStroke(1.dp, TerminalBorder),
                             modifier = Modifier.testTag("toggle_config_preview_button")
                         ) {
-                            Text(if (showConfigPreview) "Hide Code" else "Show Code")
+                            Text(if (showConfigPreview) "Hide Config File" else "Preview Config File")
                         }
                     }
 
-                    if (showConfigPreview) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        val activeCodeText = when (selectedSnippetTab) {
-                            1 -> termuxScriptSnippet
-                            2 -> GITHUB_WORKFLOW_SNIPPET
-                            else -> opencodeJsonSnippet
-                        }
-                        val activeCodeColor = when (selectedSnippetTab) {
-                            1 -> CyberCyan
-                            2 -> ArgonViolet
-                            else -> PhosphorEmerald
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(ObsidianVoid)
-                                .border(1.dp, activeCodeColor.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
-                                .padding(12.dp)
-                        ) {
-                            Text(
-                                text = activeCodeText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontFamily = JetBrainsMonoFamily,
-                                color = activeCodeColor
-                            )
+                    AnimatedVisibility(visible = showConfigPreview) {
+                        Column {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            val activeCodeText = when (selectedSnippetTab) {
+                                1 -> termuxScriptSnippet
+                                2 -> GITHUB_WORKFLOW_SNIPPET
+                                else -> opencodeJsonSnippet
+                            }
+                            val activeCodeColor = when (selectedSnippetTab) {
+                                1 -> CyberCyan
+                                2 -> ArgonViolet
+                                else -> PhosphorEmerald
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(ObsidianVoid)
+                                    .border(1.dp, activeCodeColor.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = activeCodeText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontFamily = JetBrainsMonoFamily,
+                                    color = activeCodeColor
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 4. API Key Manager (sk-mobile-...)
+        // 3. Phone RAM, Speed & Background Protection Card
+        item {
+            HardwareAndKvHudCard(
+                hardwareProfile = hardwareProfile,
+                engineConfig = engineConfig,
+                engineMetrics = engineMetrics,
+                totalDietTokensSaved = totalDietTokensSaved,
+                onRequestBatteryBypass = onRequestBatteryBypass
+            )
+        }
+
+        // 4. Manage Multiple API Keys (Clean & Collapsible)
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -337,28 +353,44 @@ fun ControlDeckScreen(
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Key,
-                            contentDescription = "API Key Authentication",
-                            tint = PhosphorEmerald
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Bearer API Key Vault (AES-256-GCM)",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = "API Key Manager",
+                                tint = PhosphorEmerald
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "API Key Manager (${apiKeys.size} Active)",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Create extra keys for different devices or revoke old keys",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TerminalTextSecondary
+                                )
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { showKeyVaultDetails = !showKeyVaultDetails },
+                            border = BorderStroke(1.dp, TerminalBorder),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
                             Text(
-                                text = "Enforced on all /v1/ and /chat/completions routes via Bearer sk-mobile-...",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TerminalTextSecondary
+                                text = if (showKeyVaultDetails) "Hide" else "Manage Keys",
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -368,7 +400,7 @@ fun ControlDeckScreen(
                         OutlinedTextField(
                             value = newKeyLabel,
                             onValueChange = { newKeyLabel = it },
-                            placeholder = { Text("Key label (e.g. Termux Laptop)") },
+                            placeholder = { Text("New key name (e.g. My Laptop)") },
                             singleLine = true,
                             modifier = Modifier
                                 .weight(1f)
@@ -378,6 +410,7 @@ fun ControlDeckScreen(
                             onClick = {
                                 onGenerateKey(newKeyLabel.ifBlank { "opencode Client" })
                                 newKeyLabel = ""
+                                showKeyVaultDetails = true
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = CyberCyan,
@@ -385,65 +418,70 @@ fun ControlDeckScreen(
                             ),
                             modifier = Modifier.testTag("generate_api_key_button")
                         ) {
-                            Text("Mint Key", fontWeight = FontWeight.Bold)
+                            Text("Create Key", fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    apiKeys.forEach { record ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            color = TerminalCardElevated,
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, TerminalBorder)
-                        ) {
-                            Row(
+                    if (showKeyVaultDetails || apiKeys.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        val visibleKeys = if (showKeyVaultDetails) apiKeys else apiKeys.take(1)
+                        visibleKeys.forEach { record ->
+                            Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                    .padding(vertical = 4.dp),
+                                color = TerminalCardElevated,
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, TerminalBorder)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = record.label,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "${record.maskedKey} • ${record.requestCount} reqs",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = PhosphorEmerald
-                                    )
-                                }
-                                Row {
-                                    IconButton(
-                                        onClick = {
-                                            clipboard.setText(AnnotatedString(record.key))
-                                            onStatusToast("Copied full key for ${record.label}")
-                                        },
-                                        modifier = Modifier.testTag("copy_key_${record.id}")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ContentCopy,
-                                            contentDescription = "Copy API key",
-                                            tint = CyberCyan
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = record.label,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "${record.key} • ${record.requestCount} requests",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFamily,
+                                            color = PhosphorEmerald,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
-                                    if (apiKeys.size > 1) {
+                                    Row {
                                         IconButton(
-                                            onClick = { onRevokeKey(record.id) },
-                                            modifier = Modifier.testTag("revoke_key_${record.id}")
+                                            onClick = {
+                                                clipboard.setText(AnnotatedString(record.key))
+                                                onStatusToast("Copied API Key for ${record.label}")
+                                            },
+                                            modifier = Modifier.testTag("copy_key_${record.id}")
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.DeleteOutline,
-                                                contentDescription = "Revoke API key",
-                                                tint = CrimsonAlert
+                                                imageVector = Icons.Default.ContentCopy,
+                                                contentDescription = "Copy API key",
+                                                tint = CyberCyan
                                             )
+                                        }
+                                        if (apiKeys.size > 1) {
+                                            IconButton(
+                                                onClick = { onRevokeKey(record.id) },
+                                                modifier = Modifier.testTag("revoke_key_${record.id}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DeleteOutline,
+                                                    contentDescription = "Delete API key",
+                                                    tint = CrimsonAlert
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -458,16 +496,20 @@ fun ControlDeckScreen(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ServerHeroCard(
+private fun QuickSetupHeroCard(
     isServerRunning: Boolean,
     bindLanMode: Boolean,
     serverPort: Int,
     baseUrl: String,
-    engineConfig: EngineConfig,
+    primaryApiKey: String,
+    activeModelId: String,
     onToggleServer: () -> Unit,
     onSetBindLan: (Boolean) -> Unit,
     onCopyBaseUrl: () -> Unit,
-    onRequestBatteryBypass: () -> Unit
+    onCopyApiKey: () -> Unit,
+    onCopyModelId: () -> Unit,
+    onOpenModelsTab: () -> Unit,
+    onOpenTestTab: () -> Unit
 ) {
     val statusColor by animateColorAsState(
         targetValue = if (isServerRunning) PhosphorEmerald else AmberWarning,
@@ -477,18 +519,18 @@ private fun ServerHeroCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.5.dp, statusColor.copy(alpha = 0.65f)),
+        border = BorderStroke(1.5.dp, statusColor.copy(alpha = 0.7f)),
         colors = CardDefaults.cardColors(containerColor = TerminalSlate)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Image(
                 painter = painterResource(id = R.drawable.img_daemon_hero_1794064302740),
-                contentDescription = "PocketCodeD ARM64 Inference Architecture",
+                contentDescription = "PocketCodeD Local AI Server",
                 contentScale = ContentScale.Crop,
-                alpha = 0.28f,
+                alpha = 0.20f,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(255.dp)
+                    .height(220.dp)
             )
             Box(
                 modifier = Modifier
@@ -496,8 +538,8 @@ private fun ServerHeroCard(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                ObsidianVoid.copy(alpha = 0.45f),
-                                TerminalSlate.copy(alpha = 0.92f),
+                                ObsidianVoid.copy(alpha = 0.55f),
+                                TerminalSlate.copy(alpha = 0.95f),
                                 TerminalSlate
                             )
                         )
@@ -505,25 +547,100 @@ private fun ServerHeroCard(
                     .padding(16.dp)
             ) {
                 Column {
+                    // STEP 1: Active AI Model
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .clip(CircleShape)
-                                    .background(statusColor)
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            StepBadge(number = "1", color = CyberCyan)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = if (isServerRunning) "DAEMON ONLINE • PORT $serverPort" else "DAEMON STANDBY",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = statusColor,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Column {
+                                Text(
+                                    text = "STEP 1 • LOADED AI MODEL",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = CyberCyan,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = activeModelId,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(
+                                onClick = onOpenModelsTab,
+                                border = BorderStroke(1.dp, CyberCyan),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeveloperBoard,
+                                    contentDescription = "Change Model",
+                                    tint = CyberCyan,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Models", style = MaterialTheme.typography.labelSmall, color = CyberCyan)
+                            }
+                            OutlinedButton(
+                                onClick = onOpenTestTab,
+                                border = BorderStroke(1.dp, PhosphorEmerald),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "Test AI",
+                                    tint = PhosphorEmerald,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Test AI", style = MaterialTheme.typography.labelSmall, color = PhosphorEmerald)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = TerminalBorder)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // STEP 2: Start Server & Choose Where You Connect From
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            StepBadge(number = "2", color = statusColor)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "STEP 2 • LOCAL AI SERVER",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = statusColor,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(9.dp)
+                                            .clip(CircleShape)
+                                            .background(statusColor)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (isServerRunning) "Running on Port $serverPort" else "Stopped (Tap Start)",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = statusColor,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
                         }
 
                         Button(
@@ -536,7 +653,7 @@ private fun ServerHeroCard(
                         ) {
                             Icon(
                                 imageVector = if (isServerRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                contentDescription = if (isServerRunning) "Stop Daemon" else "Start Daemon",
+                                contentDescription = if (isServerRunning) "Stop Server" else "Start Server",
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -547,79 +664,15 @@ private fun ServerHeroCard(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = engineConfig.activeModelId,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "6-Layer Rolling mmap • FlashAttn=ON • KV: K=${engineConfig.typeK.label} / V=${engineConfig.typeV.label} • PLD+LayerSkip=${if (engineConfig.enablePld) "ON" else "OFF"}",
+                        text = "Where are you connecting from?",
                         style = MaterialTheme.typography.labelSmall,
-                        color = CyberCyan
+                        color = TerminalTextSecondary
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Supported OpenAI & DeepSeek Route Badges
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        RoutePill("/v1/chat/completions", PhosphorEmerald)
-                        RoutePill("/v1/completions (FIM)", CyberCyan)
-                        RoutePill("/v1/embeddings (64d)", ArgonViolet)
-                        RoutePill("/chat/completions (DeepSeek)", AmberWarning)
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Endpoint URL Bar + Copy button
-                    Surface(
-                        color = ObsidianVoid.copy(alpha = 0.88f),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, GlassHighlight),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "OPENAI / DEEPSEEK / OPENCODE BASE URL",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TerminalTextSecondary
-                                )
-                                Text(
-                                    text = baseUrl,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = PhosphorEmerald,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            IconButton(
-                                onClick = onCopyBaseUrl,
-                                modifier = Modifier.testTag("copy_base_url_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = "Copy Base URL",
-                                    tint = PhosphorEmerald
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Bind Mode Selector + Battery Optimization Bypass
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -628,11 +681,11 @@ private fun ServerHeroCard(
                         FilterChip(
                             selected = !bindLanMode,
                             onClick = { onSetBindLan(false) },
-                            label = { Text("127.0.0.1 (Termux Local)") },
+                            label = { Text("Same Phone (Termux 127.0.0.1)") },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.PhoneAndroid,
-                                    contentDescription = "Localhost",
+                                    contentDescription = "Same Phone",
                                     modifier = Modifier.size(16.dp)
                                 )
                             },
@@ -646,11 +699,11 @@ private fun ServerHeroCard(
                         FilterChip(
                             selected = bindLanMode,
                             onClick = { onSetBindLan(true) },
-                            label = { Text("0.0.0.0 (Wi-Fi LAN IDE)") },
+                            label = { Text("Laptop / PC on Wi-Fi (LAN)") },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Lan,
-                                    contentDescription = "LAN Mode",
+                                    contentDescription = "Wi-Fi LAN",
                                     modifier = Modifier.size(16.dp)
                                 )
                             },
@@ -660,27 +713,66 @@ private fun ServerHeroCard(
                             ),
                             modifier = Modifier.testTag("bind_lan_chip")
                         )
+                    }
 
-                        OutlinedButton(
-                            onClick = onRequestBatteryBypass,
-                            border = BorderStroke(1.dp, AmberWarning.copy(alpha = 0.6f)),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier.testTag("battery_bypass_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.BatteryChargingFull,
-                                contentDescription = "WakeLock & Doze Bypass",
-                                tint = AmberWarning,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = TerminalBorder)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // STEP 3: Copy Your Connection Credentials
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StepBadge(number = "3", color = PhosphorEmerald)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
                             Text(
-                                text = "Bypass Battery Doze",
+                                text = "STEP 3 • YOUR API CREDENTIALS (TAP TO COPY)",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = AmberWarning
+                                color = PhosphorEmerald,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Paste these into OpenCode, DeepSeek Harness, Aider, Continue, or Cursor",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TerminalTextSecondary
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Credential 1: Base URL
+                    CredentialCopyRow(
+                        label = "BASE URL (OPENAI / DEEPSEEK COMPATIBLE)",
+                        value = baseUrl,
+                        valueColor = PhosphorEmerald,
+                        buttonText = "Copy URL",
+                        buttonTag = "copy_base_url_button",
+                        onCopy = onCopyBaseUrl
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Credential 2: API Key
+                    CredentialCopyRow(
+                        label = "API KEY (BEARER TOKEN)",
+                        value = primaryApiKey,
+                        valueColor = CyberCyan,
+                        buttonText = "Copy Key",
+                        buttonTag = "copy_primary_api_key_button",
+                        onCopy = onCopyApiKey
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Credential 3: Model Name
+                    CredentialCopyRow(
+                        label = "MODEL ID (OR USE ALIAS: qwen2.5-coder)",
+                        value = activeModelId,
+                        valueColor = ArgonViolet,
+                        buttonText = "Copy Model",
+                        buttonTag = "copy_active_model_id_button",
+                        onCopy = onCopyModelId
+                    )
                 }
             }
         }
@@ -688,18 +780,85 @@ private fun ServerHeroCard(
 }
 
 @Composable
-private fun RoutePill(text: String, accent: Color) {
+private fun StepBadge(number: String, color: Color) {
     Surface(
-        color = accent.copy(alpha = 0.14f),
-        shape = RoundedCornerShape(6.dp),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.45f))
+        color = color.copy(alpha = 0.2f),
+        shape = CircleShape,
+        border = BorderStroke(1.5.dp, color),
+        modifier = Modifier.size(26.dp)
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall,
-            color = accent,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-        )
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = number,
+                style = MaterialTheme.typography.labelLarge,
+                color = color,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun CredentialCopyRow(
+    label: String,
+    value: String,
+    valueColor: Color,
+    buttonText: String,
+    buttonTag: String,
+    onCopy: () -> Unit
+) {
+    Surface(
+        color = ObsidianVoid.copy(alpha = 0.92f),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, valueColor.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TerminalTextSecondary
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = JetBrainsMonoFamily,
+                    color = valueColor,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Button(
+                onClick = onCopy,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = valueColor.copy(alpha = 0.2f),
+                    contentColor = valueColor
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.testTag(buttonTag)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = buttonText,
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = buttonText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
     }
 }
 
@@ -708,7 +867,8 @@ private fun HardwareAndKvHudCard(
     hardwareProfile: HardwareProfile?,
     engineConfig: EngineConfig,
     engineMetrics: EngineRuntimeMetrics,
-    totalDietTokensSaved: Long
+    totalDietTokensSaved: Long,
+    onRequestBatteryBypass: () -> Unit
 ) {
     val totalRam = hardwareProfile?.totalRamMb ?: 4096L
     val availRam = hardwareProfile?.availableRamMb ?: 1800L
@@ -732,38 +892,44 @@ private fun HardwareAndKvHudCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Icon(
                         imageVector = Icons.Default.Memory,
-                        contentDescription = "Hardware Profiler",
+                        contentDescription = "Phone Memory & Speed",
                         tint = PhosphorEmerald
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = hardwareProfile?.tier?.title ?: "Adaptive Hardware Profile",
+                            text = "Phone RAM & AI Speed Monitor",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${hardwareProfile?.socSummary ?: "ARM64"} • ${hardwareProfile?.bigCoresCount ?: 4}/${hardwareProfile?.totalCpuCores ?: 8} Big Cores • RSS Cap: ${engineMetrics.residentRssCapBytes / (1024 * 1024)}MB",
+                            text = "${hardwareProfile?.tier?.title ?: "4GB/6GB Optimized"} • Max AI RAM Cap: ${engineMetrics.residentRssCapBytes / (1024 * 1024)} MB",
                             style = MaterialTheme.typography.labelSmall,
                             color = TerminalTextSecondary
                         )
                     }
                 }
 
-                Surface(
-                    color = PhosphorEmerald.copy(alpha = 0.16f),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.55f))
+                OutlinedButton(
+                    onClick = onRequestBatteryBypass,
+                    border = BorderStroke(1.dp, AmberWarning.copy(alpha = 0.6f)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("battery_bypass_button")
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.BatteryChargingFull,
+                        contentDescription = "Keep Alive in Background",
+                        tint = AmberWarning,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "-${engineMetrics.kvCacheReductionPercent}% KV RAM",
+                        text = "Keep Alive",
                         style = MaterialTheme.typography.labelSmall,
-                        color = PhosphorEmerald,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        color = AmberWarning
                     )
                 }
             }
@@ -776,7 +942,7 @@ private fun HardwareAndKvHudCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "System RAM: ${usedRam}MB / ${totalRam}MB (${availRam}MB free)",
+                    text = "Phone RAM: ${usedRam} MB used / ${totalRam} MB total (${availRam} MB free)",
                     style = MaterialTheme.typography.labelSmall
                 )
                 Text(
@@ -805,11 +971,11 @@ private fun HardwareAndKvHudCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "KV Cache (${engineConfig.typeK.label}/${engineConfig.typeV.label}): $kvUsed / $kvCap tok (Pinned n_keep=${engineMetrics.pinnedPrefixTokens})",
+                    text = "AI Context Memory: $kvUsed / $kvCap tokens",
                     style = MaterialTheme.typography.labelSmall
                 )
                 Text(
-                    text = "${engineMetrics.kvCacheBytes / (1024 * 1024)}MB (-${engineMetrics.kvCacheSavedBytes / (1024 * 1024)}MB saved)",
+                    text = "${engineMetrics.kvCacheBytes / (1024 * 1024)} MB (-${engineMetrics.kvCacheReductionPercent}% RAM saved)",
                     style = MaterialTheme.typography.labelSmall,
                     color = CyberCyan,
                     fontWeight = FontWeight.Bold
@@ -824,14 +990,13 @@ private fun HardwareAndKvHudCard(
                 border = BorderStroke(1.dp, TerminalBorder),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp)
+                    .height(48.dp)
             ) {
                 Canvas(modifier = Modifier.fillMaxSize().padding(8.dp)) {
                     val w = size.width
                     val h = size.height
 
-                    // Top segmented bar: Pinned Prefix (Emerald) + Dynamic Context (Cyan) + Free Quantized Slot
-                    val barHeight = 8.dp.toPx()
+                    val barHeight = 7.dp.toPx()
                     drawRoundRect(
                         color = TerminalCardElevated,
                         topLeft = Offset(0f, 0f),
@@ -853,9 +1018,8 @@ private fun HardwareAndKvHudCard(
                         cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                     )
 
-                    // Bottom dual-trace throughput waveform (Prefill & Decode PLD)
-                    val waveTop = barHeight + 6.dp.toPx()
-                    val waveH = (h - waveTop).coerceAtLeast(10f)
+                    val waveTop = barHeight + 5.dp.toPx()
+                    val waveH = (h - waveTop).coerceAtLeast(8f)
                     val pathEmerald = Path()
                     val pathCyan = Path()
                     val steps = 36
@@ -878,35 +1042,35 @@ private fun HardwareAndKvHudCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // 4 Metric Pills
+            // 4 Metric Pills with Simple Labels
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 MetricTile(
                     modifier = Modifier.weight(1f),
-                    label = "PREFILL",
-                    value = "${String.format("%.1f", if (engineMetrics.lastPrefillTokPerSec > 0) engineMetrics.lastPrefillTokPerSec else 264.8)} t/s",
+                    label = "READ SPEED",
+                    value = "${String.format("%.0f", if (engineMetrics.lastPrefillTokPerSec > 0) engineMetrics.lastPrefillTokPerSec else 265.0)} t/s",
                     accent = PhosphorEmerald
                 )
                 MetricTile(
                     modifier = Modifier.weight(1f),
-                    label = "DECODE (PLD)",
+                    label = "WRITE SPEED",
                     value = "${String.format("%.1f", if (engineMetrics.lastDecodeTokPerSec > 0) engineMetrics.lastDecodeTokPerSec else 54.2)} t/s",
                     accent = CyberCyan
                 )
                 MetricTile(
                     modifier = Modifier.weight(1f),
-                    label = "SPEEDUP",
-                    value = "${String.format("%.2f", engineMetrics.pldSpeedupMultiplier)}x",
+                    label = "TURBO BOOST",
+                    value = "${String.format("%.1f", engineMetrics.pldSpeedupMultiplier)}x",
                     accent = ArgonViolet
                 )
                 MetricTile(
                     modifier = Modifier.weight(1f),
-                    label = "DIET SAVED",
-                    value = "${totalDietTokensSaved / 1000}k tok",
+                    label = "TOKENS SAVED",
+                    value = "${totalDietTokensSaved / 1000}k",
                     accent = PhosphorEmerald
                 )
             }

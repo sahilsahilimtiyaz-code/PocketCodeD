@@ -92,12 +92,12 @@ fun TelemetryConsoleScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    text = "Live Agent Telemetry Console",
+                                    text = "Activity & Request History",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Harness Diet savings: $totalDietTokensSaved tok • KV Hit Ratio: ${engineMetrics.kvCacheHitRatioPercent}%",
+                                    text = "Tokens Saved: $totalDietTokensSaved • Memory Cache Hit Rate: ${engineMetrics.kvCacheHitRatioPercent}%",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = CyberCyan
                                 )
@@ -127,15 +127,15 @@ fun TelemetryConsoleScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         TelemetryBadge(
-                            text = "Events: ${logs.size}",
+                            text = "Requests: ${logs.size}",
                             color = PhosphorEmerald
                         )
                         TelemetryBadge(
-                            text = "PLD Accepted: ${engineMetrics.pldAcceptedTokens}/${engineMetrics.pldDraftedTokens}",
+                            text = "Turbo Tokens: ${engineMetrics.pldAcceptedTokens}",
                             color = ArgonViolet
                         )
                         TelemetryBadge(
-                            text = "OOM Guards: ${engineMetrics.oomTrimEventsCount}",
+                            text = "RAM Protections: ${engineMetrics.oomTrimEventsCount}",
                             color = AmberWarning
                         )
                     }
@@ -159,13 +159,13 @@ fun TelemetryConsoleScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Terminal,
-                            contentDescription = "No telemetry events",
+                            contentDescription = "No activity yet",
                             tint = TerminalTextSecondary,
                             modifier = Modifier.size(38.dp)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Awaiting incoming opencode / DeepSeek / Aider / Sandbox requests...",
+                            text = "No requests yet. Tap 'Test AI' below or connect OpenCode / DeepSeek / Aider to see live activity here.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TerminalTextSecondary
                         )
