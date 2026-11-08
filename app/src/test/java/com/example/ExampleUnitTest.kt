@@ -181,8 +181,38 @@ class ExampleUnitTest {
         val normSq = embedding.sumOf { (it * it).toDouble() }
         assertTrue(normSq in 0.90..1.10)
     }
+
+    @Test
+    fun `PocketEngineBridge synthesizes multi-language code and chat responses offline`() {
+        val bridge = PocketEngineBridge()
+
+        val pythonChunks = StringBuilder()
+        kotlinx.coroutines.runBlocking {
+            bridge.generateChatStream(
+                messages = listOf(ChatMessage("user", "Write a Python function for binary search with example tests")),
+                tools = emptyList(),
+                compiledGbnf = null
+            ).collect { step ->
+                pythonChunks.append(step.tokenChunk)
+            }
+        }
+        val pythonOutput = pythonChunks.toString()
+        assertTrue(pythonOutput.contains("def binary_search"))
+        assertTrue(pythonOutput.contains("```python"))
+
+        val htmlChunks = StringBuilder()
+        kotlinx.coroutines.runBlocking {
+            bridge.generateChatStream(
+                messages = listOf(ChatMessage("user", "Create a responsive HTML and CSS landing page")),
+                tools = emptyList(),
+                compiledGbnf = null
+            ).collect { step ->
+                htmlChunks.append(step.tokenChunk)
+            }
+        }
+        val htmlOutput = htmlChunks.toString()
+        assertTrue(htmlOutput.contains("<!DOCTYPE html>"))
+    }
 }
-
-
 
 

@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,16 +22,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.DeveloperBoard
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
@@ -62,6 +66,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.model.DownloadStatus
+import com.example.model.ModelDownloadState
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.ArgonViolet
 import com.example.ui.theme.CyberCyan
@@ -79,12 +85,14 @@ fun ApiGbnfSandboxScreen(
     sandboxState: SandboxUiState,
     chatMessages: List<UiChatBubble> = emptyList(),
     activeModelId: String = "Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf",
+    modelStates: List<ModelDownloadState> = emptyList(),
     onSelectMode: (SandboxMode) -> Unit,
     onUpdatePrompt: (String) -> Unit,
     onUpdateFimPrefix: (String) -> Unit,
     onUpdateFimSuffix: (String) -> Unit,
     onRunPipeline: () -> Unit,
     onSendQuickPrompt: (String) -> Unit = {},
+    onActivateModel: (String) -> Unit = {},
     onClearChat: () -> Unit = {},
     onOpenModelsTab: () -> Unit = {},
     onOpenApiKeysTab: () -> Unit = {},
@@ -92,96 +100,212 @@ fun ApiGbnfSandboxScreen(
 ) {
     val clipboard = LocalClipboardManager.current
     var showGrammarInspector by remember { mutableStateOf(false) }
+    var showQuickModelSwitcher by remember { mutableStateOf(false) }
     val cleanModelName = activeModelId.removeSuffix(".gguf")
+
+    val downloadedModels = modelStates.filter {
+        it.status == DownloadStatus.READY || it.descriptor.id == activeModelId
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(ObsidianVoid)
     ) {
-        // 1. Top Chat Bar: Active Offline Model + Switch Model + Get API Key + New Chat
+        // 1. Sleek Chat Action Bar (Model Selector Pill + Get API Key + Clear Chat)
         Surface(
             color = TerminalSlate,
-            border = BorderStroke(1.dp, TerminalBorder),
+            border = BorderStroke(0.5.dp, TerminalBorder),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
+                    // Tappable Model Selector Pill (Just like ChatGPT / Ollama!)
+                    Surface(
+                        color = ObsidianVoid,
+                        shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.6f)),
                         modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(PhosphorEmerald)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = "OFFLINE CHAT MODEL",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = PhosphorEmerald,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = cleanModelName,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                            .weight(1f, fill = false)
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable { showQuickModelSwitcher = !showQuickModelSwitcher }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(PhosphorEmerald)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = cleanModelName,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 180.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.ExpandMore,
+                                contentDescription = "Switch Downloaded Model",
+                                tint = PhosphorEmerald,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = onOpenApiKeysTab,
+                            shape = RoundedCornerShape(18.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PhosphorEmerald,
+                                contentColor = ObsidianVoid
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = "Get API Key",
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "API Key",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onClearChat,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteSweep,
+                                contentDescription = "Clear Chat",
+                                tint = TerminalTextSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedButton(
-                        onClick = onOpenModelsTab,
-                        border = BorderStroke(1.dp, CyberCyan),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                // Expandable Quick Switcher for Downloaded Models right inside Chat!
+                AnimatedVisibility(visible = showQuickModelSwitcher) {
+                    Surface(
+                        color = ObsidianVoid,
+                        border = BorderStroke(1.dp, TerminalBorder),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.DeveloperBoard,
-                            contentDescription = "Switch Model",
-                            tint = CyberCyan,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Switch Model", style = MaterialTheme.typography.labelSmall, color = CyberCyan)
-                    }
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "MY DOWNLOADED MODELS (TAP TO USE)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = PhosphorEmerald,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        showQuickModelSwitcher = false
+                                        onOpenModelsTab()
+                                    },
+                                    border = BorderStroke(1.dp, CyberCyan),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "Download More Models",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = CyberCyan
+                                    )
+                                }
+                            }
 
-                    Button(
-                        onClick = onOpenApiKeysTab,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = PhosphorEmerald,
-                            contentColor = ObsidianVoid
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Key,
-                            contentDescription = "Get API Key",
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Get API Key", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    }
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                    IconButton(
-                        onClick = onClearChat,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteSweep,
-                            contentDescription = "New Chat",
-                            tint = TerminalTextSecondary
-                        )
+                            downloadedModels.forEach { mState ->
+                                val isCurrent = mState.descriptor.id == activeModelId
+                                Surface(
+                                    color = if (isCurrent) PhosphorEmerald.copy(alpha = 0.16f) else TerminalSlate,
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, if (isCurrent) PhosphorEmerald else TerminalBorder),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 3.dp)
+                                        .clickable {
+                                            onActivateModel(mState.descriptor.id)
+                                            showQuickModelSwitcher = false
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = mState.descriptor.displayName,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "${mState.descriptor.parameterCount} • Min ${mState.descriptor.minRamGb}GB RAM",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TerminalTextSecondary
+                                            )
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (isCurrent) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = "In Use",
+                                                    tint = PhosphorEmerald,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "In Use",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = PhosphorEmerald,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = "Use This Model",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = CyberCyan,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -196,99 +320,45 @@ fun ApiGbnfSandboxScreen(
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Quick Starter Prompts Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = TerminalSlate),
-                    border = BorderStroke(1.dp, TerminalBorder),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "TAP A QUICK PROMPT TO TEST OFFLINE AI:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = CyberCyan,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            QuickPromptChip("Binary Search in Kotlin") {
-                                onSendQuickPrompt("Write binary search in Kotlin")
-                            }
-                            QuickPromptChip("Python Async API") {
-                                onSendQuickPrompt("Write a Python async API script")
-                            }
-                            QuickPromptChip("HTML/CSS Login Page") {
-                                onSendQuickPrompt("Create a modern HTML and CSS login page")
-                            }
-                            QuickPromptChip("C++ mmap Optimizer") {
-                                onSendQuickPrompt("Show C++ llama.cpp mmap and KV cache setup")
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Chat Message Bubbles
-            items(chatMessages, key = { it.id }) { bubble ->
+            itemsIndexed(chatMessages, key = { _, it -> it.id }) { index, bubble ->
+                val isLastAssistant = !bubble.isUser && index == chatMessages.lastIndex
                 ChatBubbleItem(
                     bubble = bubble,
+                    attachOutputTestTag = isLastAssistant,
                     onCopy = {
                         clipboard.setText(AnnotatedString(bubble.text))
-                        onStatusToast("Copied message to clipboard!")
+                        onStatusToast("Copied response to clipboard!")
                     }
                 )
             }
 
-            // Latest Output Box (Preserved for testTag compatibility & technical inspection)
-            if (sandboxState.outputStreamText.isNotBlank() || showGrammarInspector) {
+            // Show quick horizontal suggestion chips when at the start of a chat
+            if (chatMessages.size <= 2) {
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = TerminalSlate),
-                        border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.45f)),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Latest Stream Output (${sandboxState.mode.label})",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = PhosphorEmerald,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "${sandboxState.rawTokensBeforeDiet} -> ${sandboxState.compressedTokensAfterDiet} tok",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = AmberWarning
-                                )
+                    Column {
+                        Text(
+                            text = "Try asking:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TerminalTextSecondary,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            QuickPromptChip("Write binary search in Kotlin") {
+                                onSendQuickPrompt("Write binary search in Kotlin")
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(ObsidianVoid)
-                                    .border(1.dp, TerminalBorder, RoundedCornerShape(10.dp))
-                                    .padding(10.dp)
-                                    .testTag("sandbox_output_box")
-                            ) {
-                                Text(
-                                    text = sandboxState.outputStreamText.ifBlank {
-                                        "// Ready to stream output"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = JetBrainsMonoFamily,
-                                    color = PhosphorEmerald
-                                )
+                            QuickPromptChip("Build a Python calculator") {
+                                onSendQuickPrompt("Write a calculator in Python")
+                            }
+                            QuickPromptChip("HTML/CSS login page") {
+                                onSendQuickPrompt("Create a modern HTML and CSS login page")
+                            }
+                            QuickPromptChip("How do I get my API key?") {
+                                onSendQuickPrompt("How do I get my API key and Base URL?")
                             }
                         }
                     }
@@ -341,28 +411,31 @@ fun ApiGbnfSandboxScreen(
             }
         }
 
-        // 3. Bottom Chat Composer & Mode Bar (Pinned at Bottom like ChatGPT / Claude)
+        // 3. Clean Bottom Chat Composer & Mode Strip
         Surface(
             color = TerminalSlate,
-            border = BorderStroke(1.dp, TerminalBorder),
+            border = BorderStroke(0.5.dp, TerminalBorder),
             tonalElevation = 8.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                // Mode Selection Strip
-                FlowRow(
+                // Single-row horizontally scrollable Mode Strip so it never wraps or crowds the screen
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     SandboxMode.entries.forEach { mode ->
                         val chipLabel = when (mode) {
                             SandboxMode.NORMAL_CHAT -> "Chat"
                             SandboxMode.AGENT_TOOL_CALL -> "Agent Tool JSON"
-                            SandboxMode.FIM_COMPLETION -> "Autocomplete (FIM)"
+                            SandboxMode.FIM_COMPLETION -> "Code Autocomplete"
                             SandboxMode.HIGH_THINKING -> "High Thinking"
                         }
                         FilterChip(
@@ -399,7 +472,7 @@ fun ApiGbnfSandboxScreen(
                 }
 
                 if (sandboxState.mode == SandboxMode.HIGH_THINKING) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Surface(
                         color = ArgonViolet.copy(alpha = 0.14f),
                         shape = RoundedCornerShape(8.dp),
@@ -426,7 +499,7 @@ fun ApiGbnfSandboxScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 if (sandboxState.mode == SandboxMode.FIM_COMPLETION) {
                     OutlinedTextField(
@@ -437,7 +510,7 @@ fun ApiGbnfSandboxScreen(
                             .fillMaxWidth()
                             .testTag("sandbox_fim_prefix_input"),
                         minLines = 2,
-                        maxLines = 4
+                        maxLines = 3
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
@@ -482,34 +555,31 @@ fun ApiGbnfSandboxScreen(
                             value = sandboxState.userPrompt,
                             onValueChange = onUpdatePrompt,
                             placeholder = {
-                                Text("Message $cleanModelName (100% Offline)...")
+                                Text("Ask $cleanModelName anything...")
                             },
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("sandbox_prompt_input"),
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(22.dp),
                             maxLines = 3
                         )
                         Button(
                             onClick = onRunPipeline,
                             enabled = !sandboxState.isStreaming,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = CircleShape,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = PhosphorEmerald,
                                 contentColor = ObsidianVoid
                             ),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-                            modifier = Modifier.testTag("run_sandbox_pipeline_button")
+                            contentPadding = PaddingValues(14.dp),
+                            modifier = Modifier
+                                .size(50.dp)
+                                .testTag("run_sandbox_pipeline_button")
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Send Message",
                                 modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (sandboxState.isStreaming) "..." else "Send",
-                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -524,16 +594,19 @@ private fun QuickPromptChip(
     label: String,
     onClick: () -> Unit
 ) {
-    OutlinedButton(
-        onClick = onClick,
-        border = BorderStroke(1.dp, CyberCyan.copy(alpha = 0.55f)),
-        shape = RoundedCornerShape(10.dp),
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)
+    Surface(
+        color = TerminalSlate,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, CyberCyan.copy(alpha = 0.5f)),
+        modifier = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = CyberCyan
+            style = MaterialTheme.typography.labelMedium,
+            color = CyberCyan,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
         )
     }
 }
@@ -541,6 +614,7 @@ private fun QuickPromptChip(
 @Composable
 private fun ChatBubbleItem(
     bubble: UiChatBubble,
+    attachOutputTestTag: Boolean = false,
     onCopy: () -> Unit
 ) {
     val alignment = if (bubble.isUser) Alignment.End else Alignment.Start
@@ -552,7 +626,15 @@ private fun ChatBubbleItem(
     val borderColor = if (bubble.isUser) {
         PhosphorEmerald.copy(alpha = 0.65f)
     } else {
-        CyberCyan.copy(alpha = 0.45f)
+        TerminalBorder
+    }
+
+    val bubbleModifier = if (attachOutputTestTag) {
+        Modifier
+            .widthIn(max = 560.dp)
+            .testTag("sandbox_output_box")
+    } else {
+        Modifier.widthIn(max = 560.dp)
     }
 
     Column(
@@ -562,13 +644,13 @@ private fun ChatBubbleItem(
         Surface(
             color = bubbleBg,
             shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (bubble.isUser) 16.dp else 4.dp,
-                bottomEnd = if (bubble.isUser) 4.dp else 16.dp
+                topStart = 18.dp,
+                topEnd = 18.dp,
+                bottomStart = if (bubble.isUser) 18.dp else 4.dp,
+                bottomEnd = if (bubble.isUser) 4.dp else 18.dp
             ),
             border = BorderStroke(1.dp, borderColor),
-            modifier = Modifier.widthIn(max = 560.dp)
+            modifier = bubbleModifier
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Row(
@@ -597,7 +679,7 @@ private fun ChatBubbleItem(
                             Surface(
                                 color = ObsidianVoid,
                                 shape = RoundedCornerShape(6.dp),
-                                border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.4f))
+                                border = BorderStroke(0.5.dp, PhosphorEmerald.copy(alpha = 0.4f))
                             ) {
                                 Text(
                                     text = bubble.speedBadge,
@@ -606,7 +688,7 @@ private fun ChatBubbleItem(
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                         }
 
                         if (!bubble.isUser) {

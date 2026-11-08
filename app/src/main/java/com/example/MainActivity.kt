@@ -180,13 +180,15 @@ fun PocketCodeDApp(
             contentWindowInsets = WindowInsets.safeDrawing,
             containerColor = ObsidianVoid,
             topBar = {
-                PocketTopStatusHeader(
-                    isServerRunning = isServerRunning,
-                    port = serverPort,
-                    bindLanMode = bindLanMode,
-                    activeModelId = engineConfig.activeModelId,
-                    decodeTps = if (engineMetrics.lastDecodeTokPerSec > 0) engineMetrics.lastDecodeTokPerSec else 54.2
-                )
+                if (selectedTab != PocketTab.API_SANDBOX) {
+                    PocketTopStatusHeader(
+                        isServerRunning = isServerRunning,
+                        port = serverPort,
+                        bindLanMode = bindLanMode,
+                        activeModelId = engineConfig.activeModelId,
+                        decodeTps = if (engineMetrics.lastDecodeTokPerSec > 0) engineMetrics.lastDecodeTokPerSec else 54.2
+                    )
+                }
             },
             bottomBar = {
                 if (!isExpandedScreen) {
@@ -247,6 +249,8 @@ fun PocketCodeDApp(
                                 sandboxState = sandboxState,
                                 chatMessages = chatMessages,
                                 activeModelId = engineConfig.activeModelId,
+                                modelStates = modelStates,
+                                onActivateModel = viewModel::activateModel,
                                 onSelectMode = viewModel::setSandboxMode,
                                 onUpdatePrompt = viewModel::updateSandboxPrompt,
                                 onUpdateFimPrefix = viewModel::updateSandboxFimPrefix,
