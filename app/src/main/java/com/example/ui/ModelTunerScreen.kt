@@ -19,15 +19,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Speed
@@ -113,9 +115,23 @@ fun ModelTunerScreen(
     onRunBenchmark: () -> Unit,
     onTriggerOomTrimTest: () -> Unit,
     onStatusToast: (String) -> Unit = {},
-    onOpenDaemonTab: () -> Unit = {}
+    onOpenDaemonTab: () -> Unit = {},
+    onOpenChatTab: () -> Unit = {}
 ) {
     var showAdvancedSettings by remember { mutableStateOf(false) }
+
+    val downloadedModels = modelStates.filter {
+        it.status == DownloadStatus.READY || engineConfig.activeModelId == it.descriptor.id
+    }
+    val downloadingModels = modelStates.filter {
+        it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.PAUSED
+    }
+    val availableToDownloadModels = modelStates.filter {
+        it.status != DownloadStatus.READY &&
+            engineConfig.activeModelId != it.descriptor.id &&
+            it.status != DownloadStatus.DOWNLOADING &&
+            it.status != DownloadStatus.PAUSED
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -124,43 +140,142 @@ fun ModelTunerScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 1. Simple Section Header: Choose & Load Coding AI Model
+        // =========================================================================
+        // SECTION 1: MY DOWNLOADED MODELS (READY TO USE)
+        // =========================================================================
         item {
-            Column {
-                Text(
-                    text = "CHOOSE YOUR CODING AI MODEL",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = PhosphorEmerald,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Tap 'Use This Model Now' for instant setup, or download the full offline GGUF file.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TerminalTextSecondary
-                )
+            Surface(
+                color = PhosphorEmerald.copy(alpha = 0.14f),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DownloadDone,
+                        contentDescription = "Downloaded Models",
+                        tint = PhosphorEmerald
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "MY DOWNLOADED MODELS (${downloadedModels.size} READY)",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = PhosphorEmerald,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Tap 'Use This Model' to switch models, then tap 'Chat Now' or 'Get API Key'",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TerminalTextSecondary
+                        )
+                    }
+                }
             }
         }
 
-        // 2. Curated Coding AI Models (Immediately visible at the top!)
-        items(modelStates, key = { it.descriptor.id }) { state ->
-            ModelHubItemCard(
+        items(downloadedModels, key = { "downloaded_${it.descriptor.id}" }) { state ->
+            DownloadedModelCard(
                 state = state,
                 isActive = engineConfig.activeModelId == state.descriptor.id,
                 baseUrl = baseUrl,
                 activeApiKey = activeApiKey,
                 opencodeJsonSnippet = opencodeJsonSnippet,
-                onActivate = { onActivateModel(state.descriptor.id) },
-                onSynthesizeLocal = { onSynthesizeLocalGguf(state.descriptor.id) },
-                onStartDownload = { onStartDownload(state.descriptor.id) },
-                onPauseDownload = { onPauseDownload(state.descriptor.id) },
-                onStatusToast = onStatusToast,
-                onOpenDaemonTab = onOpenDaemonTab
+                onUseModel = { onActivateModel(state.descriptor.id) },
+                onStartFullDownload = { onStartDownload(state.descriptor.id) },
+                onOpenChatTab = onOpenChatTab,
+                onOpenApiKeyTab = onOpenDaemonTab,
+                onStatusToast = onStatusToast
             )
         }
 
-        // 3. 1-Tap Phone RAM Mode & Speed Test Card
+        // =========================================================================
+        // SECTION 2: ACTIVE DOWNLOADS (IF ANY MODEL IS CURRENTLY DOWNLOADING)
+        // =========================================================================
+        if (downloadingModels.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    color = CyberCyan.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, CyberCyan),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = "Downloading Models",
+                            tint = CyberCyan
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "DOWNLOADING NOW (${downloadingModels.size})",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = CyberCyan,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "When finished, the model automatically moves into 'My Downloaded Models' above",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TerminalTextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+
+            items(downloadingModels, key = { "downloading_${it.descriptor.id}" }) { state ->
+                DownloadingModelCard(
+                    state = state,
+                    onPause = { onPauseDownload(state.descriptor.id) },
+                    onResume = { onStartDownload(state.descriptor.id) },
+                    onInstantInstallAndUse = { onSynthesizeLocalGguf(state.descriptor.id) }
+                )
+            }
+        }
+
+        // =========================================================================
+        // SECTION 3: AVAILABLE OFFLINE MODELS TO DOWNLOAD
+        // =========================================================================
+        if (availableToDownloadModels.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(6.dp))
+                Column {
+                    Text(
+                        text = "AVAILABLE MODELS TO DOWNLOAD (${availableToDownloadModels.size})",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = CyberCyan,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Tap 'Use This Model (Instant)' to add to Downloaded Models immediately, or download full weights.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TerminalTextSecondary
+                    )
+                }
+            }
+
+            items(availableToDownloadModels, key = { "available_${it.descriptor.id}" }) { state ->
+                AvailableModelCard(
+                    state = state,
+                    onInstantInstallAndUse = { onSynthesizeLocalGguf(state.descriptor.id) },
+                    onStartDownload = { onStartDownload(state.descriptor.id) }
+                )
+            }
+        }
+
+        // =========================================================================
+        // SECTION 4: 1-TAP PHONE RAM OPTIMIZER & SPEED TEST
+        // =========================================================================
         item {
+            Spacer(modifier = Modifier.height(4.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = TerminalSlate),
@@ -171,18 +286,18 @@ fun ModelTunerScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Memory,
-                            contentDescription = "Phone RAM Mode",
+                            contentDescription = "Phone RAM Optimizer",
                             tint = PhosphorEmerald
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                text = "1-Tap Phone RAM & Speed Booster",
+                                text = "Phone RAM Optimizer (4GB / 6GB)",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Select your phone's RAM size to automatically optimize speed and prevent crashes",
+                                text = "Tap your phone's RAM size so models run smoothly without crashing",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TerminalTextSecondary
                             )
@@ -204,7 +319,7 @@ fun ModelTunerScreen(
                             ),
                             modifier = Modifier.testTag("preset_4gb_button")
                         ) {
-                            Text("4GB RAM Phone (Safe Mode)", fontWeight = FontWeight.Bold)
+                            Text("4GB RAM Phone", fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -215,7 +330,7 @@ fun ModelTunerScreen(
                             ),
                             modifier = Modifier.testTag("preset_6gb_button")
                         ) {
-                            Text("6GB+ RAM Phone (Fast Mode)", fontWeight = FontWeight.Bold)
+                            Text("6GB+ RAM Phone", fontWeight = FontWeight.Bold)
                         }
 
                         OutlinedButton(
@@ -225,7 +340,7 @@ fun ModelTunerScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Speed,
-                                contentDescription = "Run Speed Test",
+                                contentDescription = "Speed Test",
                                 tint = PhosphorEmerald,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -244,24 +359,19 @@ fun ModelTunerScreen(
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
-                                    text = "SPEED TEST RESULTS • ${benchmarkReport.modelId}",
+                                    text = "SPEED TEST • ${benchmarkReport.modelId}",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = PhosphorEmerald,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "• Writing Speed: ${String.format("%.1f", benchmarkReport.optimizedDecodeTps)} tokens/sec (${String.format("%.2f", benchmarkReport.totalSpeedupMultiplier)}x faster)",
+                                    text = "• Speed: ${String.format("%.1f", benchmarkReport.optimizedDecodeTps)} tokens/sec (${String.format("%.2f", benchmarkReport.totalSpeedupMultiplier)}x faster)",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = CyberCyan
                                 )
                                 Text(
-                                    text = "• Reading Speed: ${String.format("%.1f", benchmarkReport.optimizedPrefillTps)} tokens/sec (-${benchmarkReport.dietTokenReductionPct}% smaller prompts)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = PhosphorEmerald
-                                )
-                                Text(
-                                    text = "• Memory Used: ${benchmarkReport.optimizedRamMb} MB (Down from ${benchmarkReport.baselineRamMb} MB — Fits 4GB RAM!)",
+                                    text = "• RAM Used: ${benchmarkReport.optimizedRamMb} MB (Fits 4GB RAM easily!)",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = AmberWarning
                                 )
@@ -272,7 +382,9 @@ fun ModelTunerScreen(
             }
         }
 
-        // 4. Collapsible Advanced Engine & Memory Settings (Optional)
+        // =========================================================================
+        // SECTION 5: COLLAPSIBLE ADVANCED ENGINE SETTINGS (ALL FEATURES PRESERVED)
+        // =========================================================================
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -300,7 +412,7 @@ fun ModelTunerScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Already auto-tuned! Open only if you want manual CPU/GPU/Memory sliders",
+                                    text = "CPU threads, GPU layers, context window & memory controls",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TerminalTextSecondary
                                 )
@@ -335,7 +447,7 @@ fun ModelTunerScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Save,
-                                        contentDescription = "Save Memory Snapshot",
+                                        contentDescription = "Save Memory Cache",
                                         tint = CyberCyan,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -350,12 +462,12 @@ fun ModelTunerScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Restore,
-                                        contentDescription = "Restore Memory Snapshot",
+                                        contentDescription = "Restore Memory Cache",
                                         tint = ArgonViolet,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Fast Resume Cache", color = ArgonViolet)
+                                    Text("Restore Cache", color = ArgonViolet)
                                 }
 
                                 OutlinedButton(
@@ -370,23 +482,14 @@ fun ModelTunerScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Free Up Memory Now", color = CrimsonAlert)
+                                    Text("Free Up Memory", color = CrimsonAlert)
                                 }
-                            }
-
-                            if (!engineMetrics.lastOomTrimSummary.isNullOrBlank()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Last Memory Action: ${engineMetrics.lastOomTrimSummary}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = AmberWarning
-                                )
                             }
 
                             Spacer(modifier = Modifier.height(14.dp))
 
                             Text(
-                                text = "Context Length (Memory Window): ${engineConfig.contextSize} tokens",
+                                text = "Context Length: ${engineConfig.contextSize} tokens",
                                 style = MaterialTheme.typography.labelLarge
                             )
                             Slider(
@@ -439,7 +542,7 @@ fun ModelTunerScreen(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Text(
-                                text = "Key Cache Compression: ${engineConfig.typeK.label.uppercase()}",
+                                text = "Key Cache Quantization: ${engineConfig.typeK.label.uppercase()}",
                                 style = MaterialTheme.typography.labelLarge
                             )
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -459,7 +562,7 @@ fun ModelTunerScreen(
                             Spacer(modifier = Modifier.height(6.dp))
 
                             Text(
-                                text = "Value Cache Compression: ${engineConfig.typeV.label.uppercase()}",
+                                text = "Value Cache Quantization: ${engineConfig.typeV.label.uppercase()}",
                                 style = MaterialTheme.typography.labelLarge
                             )
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -551,29 +654,376 @@ fun ModelTunerScreen(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ModelHubItemCard(
+private fun DownloadedModelCard(
     state: ModelDownloadState,
     isActive: Boolean,
     baseUrl: String,
     activeApiKey: String,
     opencodeJsonSnippet: String,
-    onActivate: () -> Unit,
-    onSynthesizeLocal: () -> Unit,
-    onStartDownload: () -> Unit,
-    onPauseDownload: () -> Unit,
-    onStatusToast: (String) -> Unit,
-    onOpenDaemonTab: () -> Unit
+    onUseModel: () -> Unit,
+    onStartFullDownload: () -> Unit,
+    onOpenChatTab: () -> Unit,
+    onOpenApiKeyTab: () -> Unit,
+    onStatusToast: (String) -> Unit
 ) {
     val clipboard = LocalClipboardManager.current
     val desc = state.descriptor
-    val borderColor = if (isActive) PhosphorEmerald else TerminalBorder
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = if (isActive) TerminalCardElevated else TerminalSlate
         ),
-        border = BorderStroke(if (isActive) 2.dp else 1.dp, borderColor),
+        border = BorderStroke(if (isActive) 2.dp else 1.2.dp, if (isActive) PhosphorEmerald else CyberCyan),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        text = desc.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${desc.parameterCount} • Works on ${desc.minRamGb}GB+ RAM • Ready Offline",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TerminalTextSecondary
+                    )
+                }
+
+                Surface(
+                    color = if (isActive) PhosphorEmerald.copy(alpha = 0.22f) else CyberCyan.copy(alpha = 0.16f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, if (isActive) PhosphorEmerald else CyberCyan)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Status",
+                            tint = if (isActive) PhosphorEmerald else CyberCyan,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isActive) "IN USE" else "DOWNLOADED",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isActive) PhosphorEmerald else CyberCyan,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Primary Action Buttons: "Use This Model", "Chat Now", "Get API Key"
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (!isActive) {
+                    Button(
+                        onClick = onUseModel,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = PhosphorEmerald,
+                            contentColor = ObsidianVoid
+                        ),
+                        modifier = Modifier.testTag("activate_model_${desc.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = "Use This Model",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Use This Model", fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Button(
+                        onClick = onOpenChatTab,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = PhosphorEmerald,
+                            contentColor = ObsidianVoid
+                        ),
+                        modifier = Modifier.testTag("activate_model_${desc.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "Chat With This Model",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Chat With This Model", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = onOpenApiKeyTab,
+                    border = BorderStroke(1.dp, CyberCyan)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Key,
+                        contentDescription = "Get API Key",
+                        tint = CyberCyan,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Get API Key & URL", color = CyberCyan, fontWeight = FontWeight.Bold)
+                }
+
+                // If user only has the compact quick-load file (< 5MB), allow downloading full HF weights too
+                if (state.downloadedBytes < 5 * 1024 * 1024L) {
+                    OutlinedButton(
+                        onClick = onStartFullDownload,
+                        border = BorderStroke(1.dp, TerminalBorder),
+                        modifier = Modifier.testTag("download_hf_${desc.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = "Download Full Weights",
+                            tint = TerminalTextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Download Full (${desc.expectedSizeMb} MB)", color = TerminalTextSecondary)
+                    }
+                }
+            }
+
+            // When this model is Active, show its API Key & Base URL right inside the card too!
+            if (isActive) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    color = ObsidianVoid,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.55f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "ACTIVE MODEL API CREDENTIALS (LIKE CLOUD AI PROVIDERS)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = PhosphorEmerald,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Base URL:  $baseUrl",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = JetBrainsMonoFamily,
+                            color = CyberCyan,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "API Key:   $activeApiKey",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = JetBrainsMonoFamily,
+                            color = PhosphorEmerald,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Model ID:  ${desc.id}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = JetBrainsMonoFamily,
+                            color = TerminalTextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    clipboard.setText(AnnotatedString(activeApiKey))
+                                    onStatusToast("Copied API Key: $activeApiKey")
+                                },
+                                border = BorderStroke(1.dp, PhosphorEmerald),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy Key", tint = PhosphorEmerald, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Copy API Key", style = MaterialTheme.typography.labelSmall, color = PhosphorEmerald)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    clipboard.setText(AnnotatedString(baseUrl))
+                                    onStatusToast("Copied Base URL: $baseUrl")
+                                },
+                                border = BorderStroke(1.dp, CyberCyan),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy URL", tint = CyberCyan, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Copy Base URL", style = MaterialTheme.typography.labelSmall, color = CyberCyan)
+                            }
+                            if (opencodeJsonSnippet.isNotBlank()) {
+                                OutlinedButton(
+                                    onClick = {
+                                        clipboard.setText(AnnotatedString(opencodeJsonSnippet))
+                                        onStatusToast("Copied opencode.json config!")
+                                    },
+                                    border = BorderStroke(1.dp, ArgonViolet),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy opencode.json", tint = ArgonViolet, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Copy opencode.json", style = MaterialTheme.typography.labelSmall, color = ArgonViolet)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DownloadingModelCard(
+    state: ModelDownloadState,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onInstantInstallAndUse: () -> Unit
+) {
+    val desc = state.descriptor
+    val pct = (state.progressFraction * 100f).roundToInt().coerceIn(0, 100)
+    val dlMb = state.downloadedBytes / (1024 * 1024)
+    val totalMb = (state.totalBytes / (1024 * 1024)).coerceAtLeast(1L)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = TerminalCardElevated),
+        border = BorderStroke(1.5.dp, CyberCyan),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = desc.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (state.status == DownloadStatus.PAUSED) "Download Paused" else "Downloading Offline Model...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CyberCyan
+                    )
+                }
+                Text(
+                    text = "$pct%",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = CyberCyan,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            LinearProgressIndicator(
+                progress = { state.progressFraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(5.dp)),
+                color = CyberCyan,
+                trackColor = ObsidianVoid
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "$dlMb MB / $totalMb MB • Speed: ${state.speedKbps} KB/s",
+                style = MaterialTheme.typography.labelSmall,
+                color = TerminalTextSecondary
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Lets the user immediately finish & move the model into "My Downloaded Models" without waiting!
+                Button(
+                    onClick = onInstantInstallAndUse,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PhosphorEmerald,
+                        contentColor = ObsidianVoid
+                    ),
+                    modifier = Modifier.testTag("synthesize_model_${desc.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = "Use This Model Now",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Install & Use This Model Now", fontWeight = FontWeight.Bold)
+                }
+
+                if (state.status == DownloadStatus.DOWNLOADING) {
+                    OutlinedButton(
+                        onClick = onPause,
+                        border = BorderStroke(1.dp, AmberWarning)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Pause,
+                            contentDescription = "Pause",
+                            tint = AmberWarning,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Pause", color = AmberWarning)
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = onResume,
+                        border = BorderStroke(1.dp, CyberCyan),
+                        modifier = Modifier.testTag("download_hf_${desc.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Resume",
+                            tint = CyberCyan,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Resume Download", color = CyberCyan)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AvailableModelCard(
+    state: ModelDownloadState,
+    onInstantInstallAndUse: () -> Unit,
+    onStartDownload: () -> Unit
+) {
+    val desc = state.descriptor
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = TerminalSlate),
+        border = BorderStroke(1.dp, TerminalBorder),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -584,9 +1034,9 @@ private fun ModelHubItemCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Surface(
-                        color = CyberCyan.copy(alpha = 0.16f),
+                        color = CyberCyan.copy(alpha = 0.14f),
                         shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, CyberCyan.copy(alpha = 0.5f))
+                        border = BorderStroke(1.dp, CyberCyan.copy(alpha = 0.45f))
                     ) {
                         Text(
                             text = desc.highlightTag,
@@ -607,154 +1057,6 @@ private fun ModelHubItemCard(
                         color = TerminalTextSecondary
                     )
                 }
-
-                if (isActive) {
-                    Surface(
-                        color = PhosphorEmerald.copy(alpha = 0.2f),
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, PhosphorEmerald)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "Active Model",
-                                tint = PhosphorEmerald,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "ACTIVE & READY",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = PhosphorEmerald,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
-
-            // When this model is loaded, show a crystal-clear Connection Box right inside the card!
-            if (isActive) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Surface(
-                    color = ObsidianVoid,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.6f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "YOUR API DETAILS FOR THIS MODEL (TAP TO COPY)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = PhosphorEmerald,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Base URL:  $baseUrl",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontFamily = JetBrainsMonoFamily,
-                            color = CyberCyan,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "API Key:   $activeApiKey",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontFamily = JetBrainsMonoFamily,
-                            color = PhosphorEmerald,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Model ID:  ${desc.id}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontFamily = JetBrainsMonoFamily,
-                            color = TerminalTextSecondary
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    clipboard.setText(AnnotatedString(baseUrl))
-                                    onStatusToast("Copied Base URL: $baseUrl")
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = CyberCyan,
-                                    contentColor = ObsidianVoid
-                                ),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy URL", modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Copy URL", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                            }
-                            Button(
-                                onClick = {
-                                    clipboard.setText(AnnotatedString(activeApiKey))
-                                    onStatusToast("Copied API Key: $activeApiKey")
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = PhosphorEmerald,
-                                    contentColor = ObsidianVoid
-                                ),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.Key, contentDescription = "Copy API Key", modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Copy API Key", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                            }
-                            if (opencodeJsonSnippet.isNotBlank()) {
-                                OutlinedButton(
-                                    onClick = {
-                                        clipboard.setText(AnnotatedString(opencodeJsonSnippet))
-                                        onStatusToast("Copied opencode.json for ${desc.id}!")
-                                    },
-                                    border = BorderStroke(1.dp, ArgonViolet),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy opencode.json", tint = ArgonViolet, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Copy opencode.json", style = MaterialTheme.typography.labelSmall, color = ArgonViolet)
-                                }
-                            }
-                            OutlinedButton(
-                                onClick = onOpenDaemonTab,
-                                border = BorderStroke(1.dp, AmberWarning),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.Dns, contentDescription = "Open Home & API", tint = AmberWarning, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Open Home & API", style = MaterialTheme.typography.labelSmall, color = AmberWarning)
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (state.status == DownloadStatus.DOWNLOADING || state.status == DownloadStatus.PAUSED) {
-                Spacer(modifier = Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { state.progressFraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                    color = CyberCyan,
-                    trackColor = ObsidianVoid
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Downloading: ${state.downloadedBytes / (1024 * 1024)} MB / ${state.totalBytes / (1024 * 1024)} MB (${state.speedKbps} KB/s)",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = CyberCyan
-                )
             }
 
             if (!state.errorMessage.isNullOrBlank()) {
@@ -766,84 +1068,42 @@ private fun ModelHubItemCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (state.status == DownloadStatus.READY) {
-                    Button(
-                        onClick = onActivate,
-                        enabled = !isActive,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = PhosphorEmerald,
-                            contentColor = ObsidianVoid
-                        ),
-                        modifier = Modifier.testTag("activate_model_${desc.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = "Use This Model",
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (isActive) "Currently Loaded" else "Use This Model Now",
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                } else {
-                    Button(
-                        onClick = onSynthesizeLocal,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = PhosphorEmerald,
-                            contentColor = ObsidianVoid
-                        ),
-                        modifier = Modifier.testTag("synthesize_model_${desc.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = "Use This Model Now (Instant)",
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Use This Model Now (Instant)", fontWeight = FontWeight.Bold)
-                    }
+                Button(
+                    onClick = onInstantInstallAndUse,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PhosphorEmerald,
+                        contentColor = ObsidianVoid
+                    ),
+                    modifier = Modifier.testTag("synthesize_model_${desc.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = "Use This Model",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Use This Model (Instant)", fontWeight = FontWeight.Bold)
                 }
 
-                if (state.status == DownloadStatus.DOWNLOADING) {
-                    OutlinedButton(
-                        onClick = onPauseDownload,
-                        border = BorderStroke(1.dp, AmberWarning)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Pause,
-                            contentDescription = "Pause Download",
-                            tint = AmberWarning,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Pause Download", color = AmberWarning)
-                    }
-                } else {
-                    OutlinedButton(
-                        onClick = onStartDownload,
-                        border = BorderStroke(1.dp, CyberCyan),
-                        modifier = Modifier.testTag("download_hf_${desc.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudDownload,
-                            contentDescription = "Download Full Offline Model",
-                            tint = CyberCyan,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (state.status == DownloadStatus.PAUSED) "Resume Download" else "Download Full Offline Model",
-                            color = CyberCyan
-                        )
-                    }
+                OutlinedButton(
+                    onClick = onStartDownload,
+                    border = BorderStroke(1.dp, CyberCyan),
+                    modifier = Modifier.testTag("download_hf_${desc.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudDownload,
+                        contentDescription = "Download Full Model",
+                        tint = CyberCyan,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Download Full (${desc.expectedSizeMb} MB)", color = CyberCyan)
                 }
             }
         }

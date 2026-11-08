@@ -547,99 +547,32 @@ private fun QuickSetupHeroCard(
                     .padding(16.dp)
             ) {
                 Column {
-                    // STEP 1: Active AI Model
+                    // Header: Personal AI Cloud Provider Portal
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            StepBadge(number = "1", color = CyberCyan)
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(statusColor)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    text = "STEP 1 • LOADED AI MODEL",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = CyberCyan,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = activeModelId,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            OutlinedButton(
-                                onClick = onOpenModelsTab,
-                                border = BorderStroke(1.dp, CyberCyan),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.DeveloperBoard,
-                                    contentDescription = "Change Model",
-                                    tint = CyberCyan,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Models", style = MaterialTheme.typography.labelSmall, color = CyberCyan)
-                            }
-                            OutlinedButton(
-                                onClick = onOpenTestTab,
-                                border = BorderStroke(1.dp, PhosphorEmerald),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = "Test AI",
-                                    tint = PhosphorEmerald,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Test AI", style = MaterialTheme.typography.labelSmall, color = PhosphorEmerald)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = TerminalBorder)
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // STEP 2: Start Server & Choose Where You Connect From
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            StepBadge(number = "2", color = statusColor)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = "STEP 2 • LOCAL AI SERVER",
-                                    style = MaterialTheme.typography.labelSmall,
+                                    text = if (isServerRunning) "PERSONAL AI CLOUD • ONLINE (PORT $serverPort)" else "PERSONAL AI CLOUD • OFFLINE",
+                                    style = MaterialTheme.typography.labelLarge,
                                     color = statusColor,
                                     fontWeight = FontWeight.Bold
                                 )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(9.dp)
-                                            .clip(CircleShape)
-                                            .background(statusColor)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = if (isServerRunning) "Running on Port $serverPort" else "Stopped (Tap Start)",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = statusColor,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
+                                Text(
+                                    text = "Works just like OpenAI, DeepSeek, or OpenRouter API — 100% free & offline",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TerminalTextSecondary
+                                )
                             }
                         }
 
@@ -658,20 +591,59 @@ private fun QuickSetupHeroCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (isServerRunning) "Stop Server" else "Start Server",
+                                text = if (isServerRunning) "Stop API" else "Start API",
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Credential 1: Secret API Key (First & Most Prominent!)
+                    CredentialCopyRow(
+                        label = "1. YOUR SECRET API KEY (USE IN ANY APP / TOOL)",
+                        value = primaryApiKey,
+                        valueColor = PhosphorEmerald,
+                        buttonText = "Copy API Key",
+                        buttonTag = "copy_primary_api_key_button",
+                        onCopy = onCopyApiKey
+                    )
+
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    // Credential 2: API Base URL
+                    CredentialCopyRow(
+                        label = "2. API BASE URL (OPENAI / DEEPSEEK COMPATIBLE)",
+                        value = baseUrl,
+                        valueColor = CyberCyan,
+                        buttonText = "Copy URL",
+                        buttonTag = "copy_base_url_button",
+                        onCopy = onCopyBaseUrl
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Credential 3: Active Model ID
+                    CredentialCopyRow(
+                        label = "3. ACTIVE MODEL NAME (OR USE: qwen2.5-coder)",
+                        value = activeModelId,
+                        valueColor = ArgonViolet,
+                        buttonText = "Copy Model",
+                        buttonTag = "copy_active_model_id_button",
+                        onCopy = onCopyModelId
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = TerminalBorder)
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Connection Mode & Quick Actions
                     Text(
-                        text = "Where are you connecting from?",
+                        text = "Where are you using this API key?",
                         style = MaterialTheme.typography.labelSmall,
                         color = TerminalTextSecondary
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -681,7 +653,7 @@ private fun QuickSetupHeroCard(
                         FilterChip(
                             selected = !bindLanMode,
                             onClick = { onSetBindLan(false) },
-                            label = { Text("Same Phone (Termux 127.0.0.1)") },
+                            label = { Text("On This Phone (127.0.0.1)") },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.PhoneAndroid,
@@ -699,7 +671,7 @@ private fun QuickSetupHeroCard(
                         FilterChip(
                             selected = bindLanMode,
                             onClick = { onSetBindLan(true) },
-                            label = { Text("Laptop / PC on Wi-Fi (LAN)") },
+                            label = { Text("PC / Other Devices (Wi-Fi LAN)") },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Lan,
@@ -713,66 +685,37 @@ private fun QuickSetupHeroCard(
                             ),
                             modifier = Modifier.testTag("bind_lan_chip")
                         )
-                    }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = TerminalBorder)
-                    Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = onOpenModelsTab,
+                            border = BorderStroke(1.dp, CyberCyan),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeveloperBoard,
+                                contentDescription = "Switch Model",
+                                tint = CyberCyan,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Switch Model", style = MaterialTheme.typography.labelSmall, color = CyberCyan)
+                        }
 
-                    // STEP 3: Copy Your Connection Credentials
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StepBadge(number = "3", color = PhosphorEmerald)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "STEP 3 • YOUR API CREDENTIALS (TAP TO COPY)",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = PhosphorEmerald,
-                                fontWeight = FontWeight.Bold
+                        OutlinedButton(
+                            onClick = onOpenTestTab,
+                            border = BorderStroke(1.dp, PhosphorEmerald),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Open AI Chat",
+                                tint = PhosphorEmerald,
+                                modifier = Modifier.size(15.dp)
                             )
-                            Text(
-                                text = "Paste these into OpenCode, DeepSeek Harness, Aider, Continue, or Cursor",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TerminalTextSecondary
-                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Open AI Chat", style = MaterialTheme.typography.labelSmall, color = PhosphorEmerald)
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Credential 1: Base URL
-                    CredentialCopyRow(
-                        label = "BASE URL (OPENAI / DEEPSEEK COMPATIBLE)",
-                        value = baseUrl,
-                        valueColor = PhosphorEmerald,
-                        buttonText = "Copy URL",
-                        buttonTag = "copy_base_url_button",
-                        onCopy = onCopyBaseUrl
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Credential 2: API Key
-                    CredentialCopyRow(
-                        label = "API KEY (BEARER TOKEN)",
-                        value = primaryApiKey,
-                        valueColor = CyberCyan,
-                        buttonText = "Copy Key",
-                        buttonTag = "copy_primary_api_key_button",
-                        onCopy = onCopyApiKey
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Credential 3: Model Name
-                    CredentialCopyRow(
-                        label = "MODEL ID (OR USE ALIAS: qwen2.5-coder)",
-                        value = activeModelId,
-                        valueColor = ArgonViolet,
-                        buttonText = "Copy Model",
-                        buttonTag = "copy_active_model_id_button",
-                        onCopy = onCopyModelId
-                    )
                 }
             }
         }

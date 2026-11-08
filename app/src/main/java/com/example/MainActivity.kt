@@ -40,9 +40,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeveloperBoard
-import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -79,7 +80,6 @@ import com.example.ui.PocketTab
 import com.example.ui.PocketViewModel
 import com.example.ui.TelemetryConsoleScreen
 import com.example.ui.theme.AmberWarning
-import com.example.ui.theme.ArgonViolet
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.GlassHighlight
 import com.example.ui.theme.MyApplicationTheme
@@ -141,9 +141,9 @@ fun PocketCodeDApp(
     val telemetryLogs by viewModel.telemetryLogs.collectAsStateWithLifecycle()
     val totalDietTokensSaved by viewModel.totalDietTokensSaved.collectAsStateWithLifecycle()
     val sandboxState by viewModel.sandboxState.collectAsStateWithLifecycle()
+    val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
     val benchmarkReport by viewModel.benchmarkReport.collectAsStateWithLifecycle()
 
-    // Request POST_NOTIFICATIONS runtime permission on Android 13+ for Foreground Service notification
     val notifPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { _ -> }
@@ -160,7 +160,6 @@ fun PocketCodeDApp(
         }
     }
 
-    // Auto-dismiss status banner after 4 seconds
     LaunchedEffect(statusBanner) {
         if (statusBanner != null) {
             delay(4_000L)
@@ -168,9 +167,9 @@ fun PocketCodeDApp(
         }
     }
 
-    // BackHandler on secondary tabs returns to CONTROL_DECK
-    BackHandler(enabled = selectedTab != PocketTab.CONTROL_DECK) {
-        viewModel.selectTab(PocketTab.CONTROL_DECK)
+    // BackHandler on secondary tabs returns to AI Chat (API_SANDBOX)
+    BackHandler(enabled = selectedTab != PocketTab.API_SANDBOX) {
+        viewModel.selectTab(PocketTab.API_SANDBOX)
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -244,29 +243,20 @@ fun PocketCodeDApp(
 
                     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                         when (selectedTab) {
-                            PocketTab.CONTROL_DECK -> ControlDeckScreen(
-                                isServerRunning = isServerRunning,
-                                bindLanMode = bindLanMode,
-                                serverPort = serverPort,
-                                baseUrl = viewModel.getActiveBaseUrl(),
-                                hardwareProfile = hardwareProfile,
-                                engineConfig = engineConfig,
-                                engineMetrics = engineMetrics,
-                                apiKeys = apiKeys,
-                                totalDietTokensSaved = totalDietTokensSaved,
-                                opencodeJsonSnippet = viewModel.getOpencodeJsonConfig(),
-                                termuxScriptSnippet = viewModel.getTermuxQuickstartScript(),
-                                onToggleServer = viewModel::toggleServerRunning,
-                                onSetBindLan = viewModel::setBindLanMode,
-                                onGenerateKey = viewModel::generateNewApiKey,
-                                onRevokeKey = viewModel::revokeApiKey,
-                                onRequestBatteryBypass = {
-                                    onRequestBatteryOptimizationBypass()
-                                    viewModel.showStatusMessage("Requested background battery exemption")
-                                },
-                                onStatusToast = viewModel::showStatusMessage,
+                            PocketTab.API_SANDBOX -> ApiGbnfSandboxScreen(
+                                sandboxState = sandboxState,
+                                chatMessages = chatMessages,
+                                activeModelId = engineConfig.activeModelId,
+                                onSelectMode = viewModel::setSandboxMode,
+                                onUpdatePrompt = viewModel::updateSandboxPrompt,
+                                onUpdateFimPrefix = viewModel::updateSandboxFimPrefix,
+                                onUpdateFimSuffix = viewModel::updateSandboxFimSuffix,
+                                onRunPipeline = viewModel::runLiveSandboxPipeline,
+                                onSendQuickPrompt = viewModel::sendQuickChatPrompt,
+                                onClearChat = viewModel::clearChatHistory,
                                 onOpenModelsTab = { viewModel.selectTab(PocketTab.MODEL_TUNER) },
-                                onOpenTestTab = { viewModel.selectTab(PocketTab.API_SANDBOX) }
+                                onOpenApiKeysTab = { viewModel.selectTab(PocketTab.CONTROL_DECK) },
+                                onStatusToast = viewModel::showStatusMessage
                             )
 
                             PocketTab.MODEL_TUNER -> ModelTunerScreen(
@@ -300,17 +290,33 @@ fun PocketCodeDApp(
                                 onRunBenchmark = viewModel::runHyperEdgeBenchmark,
                                 onTriggerOomTrimTest = viewModel::triggerEmergencyOomTrimTest,
                                 onStatusToast = viewModel::showStatusMessage,
-                                onOpenDaemonTab = { viewModel.selectTab(PocketTab.CONTROL_DECK) }
+                                onOpenDaemonTab = { viewModel.selectTab(PocketTab.CONTROL_DECK) },
+                                onOpenChatTab = { viewModel.selectTab(PocketTab.API_SANDBOX) }
                             )
 
-                            PocketTab.API_SANDBOX -> ApiGbnfSandboxScreen(
-                                sandboxState = sandboxState,
-                                onSelectMode = viewModel::setSandboxMode,
-                                onUpdatePrompt = viewModel::updateSandboxPrompt,
-                                onUpdateFimPrefix = viewModel::updateSandboxFimPrefix,
-                                onUpdateFimSuffix = viewModel::updateSandboxFimSuffix,
-                                onRunPipeline = viewModel::runLiveSandboxPipeline,
-                                onStatusToast = viewModel::showStatusMessage
+                            PocketTab.CONTROL_DECK -> ControlDeckScreen(
+                                isServerRunning = isServerRunning,
+                                bindLanMode = bindLanMode,
+                                serverPort = serverPort,
+                                baseUrl = viewModel.getActiveBaseUrl(),
+                                hardwareProfile = hardwareProfile,
+                                engineConfig = engineConfig,
+                                engineMetrics = engineMetrics,
+                                apiKeys = apiKeys,
+                                totalDietTokensSaved = totalDietTokensSaved,
+                                opencodeJsonSnippet = viewModel.getOpencodeJsonConfig(),
+                                termuxScriptSnippet = viewModel.getTermuxQuickstartScript(),
+                                onToggleServer = viewModel::toggleServerRunning,
+                                onSetBindLan = viewModel::setBindLanMode,
+                                onGenerateKey = viewModel::generateNewApiKey,
+                                onRevokeKey = viewModel::revokeApiKey,
+                                onRequestBatteryBypass = {
+                                    onRequestBatteryOptimizationBypass()
+                                    viewModel.showStatusMessage("Requested background battery exemption")
+                                },
+                                onStatusToast = viewModel::showStatusMessage,
+                                onOpenModelsTab = { viewModel.selectTab(PocketTab.MODEL_TUNER) },
+                                onOpenTestTab = { viewModel.selectTab(PocketTab.API_SANDBOX) }
                             )
 
                             PocketTab.TELEMETRY -> TelemetryConsoleScreen(
@@ -347,6 +353,7 @@ private fun PocketTopStatusHeader(
     )
 
     val statusDotColor = if (isServerRunning) PhosphorEmerald else AmberWarning
+    val cleanModel = activeModelId.removeSuffix(".gguf")
 
     Surface(
         color = TerminalSlate,
@@ -365,7 +372,7 @@ private fun PocketTopStatusHeader(
                         )
                     )
                 )
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -396,7 +403,7 @@ private fun PocketTopStatusHeader(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "PocketCodeD",
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -406,7 +413,7 @@ private fun PocketTopStatusHeader(
                                 border = BorderStroke(1.dp, PhosphorEmerald.copy(alpha = 0.5f))
                             ) {
                                 Text(
-                                    text = "LOCAL AI SERVER",
+                                    text = "OFFLINE AI + API",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = PhosphorEmerald,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -414,9 +421,11 @@ private fun PocketTopStatusHeader(
                             }
                         }
                         Text(
-                            text = "Model: $activeModelId",
+                            text = "Using: $cleanModel",
                             style = MaterialTheme.typography.labelSmall,
-                            color = TerminalTextSecondary
+                            color = TerminalTextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -446,9 +455,9 @@ private fun PocketTopStatusHeader(
                     ) {
                         Text(
                             text = if (isServerRunning) {
-                                "${if (bindLanMode) "Wi-Fi" else "Local"}:$port"
+                                "API ON :$port"
                             } else {
-                                "STOPPED"
+                                "API OFF"
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = statusDotColor,
@@ -477,33 +486,9 @@ private fun PocketBottomNavigationBar(
             tonalElevation = 0.dp
         ) {
             NavigationBarItem(
-                selected = selectedTab == PocketTab.CONTROL_DECK,
-                onClick = { onSelectTab(PocketTab.CONTROL_DECK) },
-                icon = { Icon(Icons.Default.Dns, contentDescription = "Control Deck") },
-                label = { Text(stringResource(R.string.tab_control_deck)) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = PhosphorEmerald,
-                    selectedTextColor = PhosphorEmerald,
-                    indicatorColor = PhosphorEmerald.copy(alpha = 0.18f)
-                ),
-                modifier = Modifier.testTag("nav_tab_control_deck")
-            )
-            NavigationBarItem(
-                selected = selectedTab == PocketTab.MODEL_TUNER,
-                onClick = { onSelectTab(PocketTab.MODEL_TUNER) },
-                icon = { Icon(Icons.Default.DeveloperBoard, contentDescription = "Model & Tuner") },
-                label = { Text(stringResource(R.string.tab_model_tuner)) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = CyberCyan,
-                    selectedTextColor = CyberCyan,
-                    indicatorColor = CyberCyan.copy(alpha = 0.18f)
-                ),
-                modifier = Modifier.testTag("nav_tab_model_tuner")
-            )
-            NavigationBarItem(
                 selected = selectedTab == PocketTab.API_SANDBOX,
                 onClick = { onSelectTab(PocketTab.API_SANDBOX) },
-                icon = { Icon(Icons.Default.Code, contentDescription = "API & GBNF") },
+                icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "AI Chat") },
                 label = { Text(stringResource(R.string.tab_sandbox)) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = PhosphorEmerald,
@@ -513,9 +498,33 @@ private fun PocketBottomNavigationBar(
                 modifier = Modifier.testTag("nav_tab_sandbox")
             )
             NavigationBarItem(
+                selected = selectedTab == PocketTab.MODEL_TUNER,
+                onClick = { onSelectTab(PocketTab.MODEL_TUNER) },
+                icon = { Icon(Icons.Default.DeveloperBoard, contentDescription = "Models") },
+                label = { Text(stringResource(R.string.tab_model_tuner)) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = CyberCyan,
+                    selectedTextColor = CyberCyan,
+                    indicatorColor = CyberCyan.copy(alpha = 0.18f)
+                ),
+                modifier = Modifier.testTag("nav_tab_model_tuner")
+            )
+            NavigationBarItem(
+                selected = selectedTab == PocketTab.CONTROL_DECK,
+                onClick = { onSelectTab(PocketTab.CONTROL_DECK) },
+                icon = { Icon(Icons.Default.Key, contentDescription = "API Keys") },
+                label = { Text(stringResource(R.string.tab_control_deck)) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = PhosphorEmerald,
+                    selectedTextColor = PhosphorEmerald,
+                    indicatorColor = PhosphorEmerald.copy(alpha = 0.18f)
+                ),
+                modifier = Modifier.testTag("nav_tab_control_deck")
+            )
+            NavigationBarItem(
                 selected = selectedTab == PocketTab.TELEMETRY,
                 onClick = { onSelectTab(PocketTab.TELEMETRY) },
-                icon = { Icon(Icons.Default.Terminal, contentDescription = "Telemetry") },
+                icon = { Icon(Icons.Default.Terminal, contentDescription = "Activity") },
                 label = { Text(stringResource(R.string.tab_telemetry)) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = CyberCyan,
@@ -537,33 +546,9 @@ private fun PocketSideNavigationRail(
         containerColor = TerminalSlate
     ) {
         NavigationRailItem(
-            selected = selectedTab == PocketTab.CONTROL_DECK,
-            onClick = { onSelectTab(PocketTab.CONTROL_DECK) },
-            icon = { Icon(Icons.Default.Dns, contentDescription = "Control Deck") },
-            label = { Text(stringResource(R.string.tab_control_deck)) },
-            colors = NavigationRailItemDefaults.colors(
-                selectedIconColor = PhosphorEmerald,
-                selectedTextColor = PhosphorEmerald,
-                indicatorColor = PhosphorEmerald.copy(alpha = 0.18f)
-            ),
-            modifier = Modifier.testTag("rail_tab_control_deck")
-        )
-        NavigationRailItem(
-            selected = selectedTab == PocketTab.MODEL_TUNER,
-            onClick = { onSelectTab(PocketTab.MODEL_TUNER) },
-            icon = { Icon(Icons.Default.DeveloperBoard, contentDescription = "Model & Tuner") },
-            label = { Text(stringResource(R.string.tab_model_tuner)) },
-            colors = NavigationRailItemDefaults.colors(
-                selectedIconColor = CyberCyan,
-                selectedTextColor = CyberCyan,
-                indicatorColor = CyberCyan.copy(alpha = 0.18f)
-            ),
-            modifier = Modifier.testTag("rail_tab_model_tuner")
-        )
-        NavigationRailItem(
             selected = selectedTab == PocketTab.API_SANDBOX,
             onClick = { onSelectTab(PocketTab.API_SANDBOX) },
-            icon = { Icon(Icons.Default.Code, contentDescription = "API & GBNF") },
+            icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "AI Chat") },
             label = { Text(stringResource(R.string.tab_sandbox)) },
             colors = NavigationRailItemDefaults.colors(
                 selectedIconColor = PhosphorEmerald,
@@ -573,9 +558,33 @@ private fun PocketSideNavigationRail(
             modifier = Modifier.testTag("rail_tab_sandbox")
         )
         NavigationRailItem(
+            selected = selectedTab == PocketTab.MODEL_TUNER,
+            onClick = { onSelectTab(PocketTab.MODEL_TUNER) },
+            icon = { Icon(Icons.Default.DeveloperBoard, contentDescription = "Models") },
+            label = { Text(stringResource(R.string.tab_model_tuner)) },
+            colors = NavigationRailItemDefaults.colors(
+                selectedIconColor = CyberCyan,
+                selectedTextColor = CyberCyan,
+                indicatorColor = CyberCyan.copy(alpha = 0.18f)
+            ),
+            modifier = Modifier.testTag("rail_tab_model_tuner")
+        )
+        NavigationRailItem(
+            selected = selectedTab == PocketTab.CONTROL_DECK,
+            onClick = { onSelectTab(PocketTab.CONTROL_DECK) },
+            icon = { Icon(Icons.Default.Key, contentDescription = "API Keys") },
+            label = { Text(stringResource(R.string.tab_control_deck)) },
+            colors = NavigationRailItemDefaults.colors(
+                selectedIconColor = PhosphorEmerald,
+                selectedTextColor = PhosphorEmerald,
+                indicatorColor = PhosphorEmerald.copy(alpha = 0.18f)
+            ),
+            modifier = Modifier.testTag("rail_tab_control_deck")
+        )
+        NavigationRailItem(
             selected = selectedTab == PocketTab.TELEMETRY,
             onClick = { onSelectTab(PocketTab.TELEMETRY) },
-            icon = { Icon(Icons.Default.Terminal, contentDescription = "Telemetry") },
+            icon = { Icon(Icons.Default.Terminal, contentDescription = "Activity") },
             label = { Text(stringResource(R.string.tab_telemetry)) },
             colors = NavigationRailItemDefaults.colors(
                 selectedIconColor = CyberCyan,

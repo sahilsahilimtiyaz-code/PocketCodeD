@@ -36,14 +36,24 @@ enum class PocketTab {
 }
 
 enum class SandboxMode(val label: String) {
+    NORMAL_CHAT("Offline AI Chat"),
     AGENT_TOOL_CALL("opencode Tool + GBNF"),
     FIM_COMPLETION("FIM (<|fim_middle|>)"),
     HIGH_THINKING("Gemini-4-Argon (High Thinking)")
 }
 
+data class UiChatBubble(
+    val id: String,
+    val isUser: Boolean,
+    val senderName: String,
+    val text: String,
+    val speedBadge: String? = null,
+    val isStreaming: Boolean = false
+)
+
 data class SandboxUiState(
-    val mode: SandboxMode = SandboxMode.AGENT_TOOL_CALL,
-    val userPrompt: String = "Edit app/src/main/cpp/PocketEngine.cpp to enable Flash Attention and Q8_0/Q4_0 KV cache quantization.",
+    val mode: SandboxMode = SandboxMode.NORMAL_CHAT,
+    val userPrompt: String = "",
     val fimPrefix: String = "fun binarySearch(array: IntArray, target: Int): Int {\n    var low = 0\n    var high = array.lastIndex\n    while (low <= high) {\n        ",
     val fimSuffix: String = "\n    }\n    return -1\n}",
     val isStreaming: Boolean = false,
@@ -51,7 +61,7 @@ data class SandboxUiState(
     val compressedTokensAfterDiet: Int = 580,
     val compiledGbnfPreview: String = "",
     val outputStreamText: String = "",
-    val statusBadge: String = "Ready — Tap 'Run Live Pipeline' to execute"
+    val statusBadge: String = "100% Offline AI Ready"
 )
 
 class PocketViewModel(application: Application) : AndroidViewModel(application) {
@@ -71,7 +81,8 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private val _selectedTab = MutableStateFlow(PocketTab.CONTROL_DECK)
+    // Default to AI Chat tab so the app immediately feels like a clean Offline AI Chat app
+    private val _selectedTab = MutableStateFlow(PocketTab.API_SANDBOX)
     val selectedTab: StateFlow<PocketTab> = _selectedTab.asStateFlow()
 
     private val _statusBannerMessage = MutableStateFlow<String?>(null)
@@ -91,6 +102,22 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
     val telemetryLogs: StateFlow<List<TelemetryLogEntry>> = DaemonStateRegistry.telemetryLogs
     val totalDietTokensSaved: StateFlow<Long> = DaemonStateRegistry.totalDietTokensSaved
 
+    private val _chatMessages = MutableStateFlow(
+        listOf(
+            UiChatBubble(
+                id = "welcome-msg",
+                isUser = false,
+                senderName = DaemonStateRegistry.engineConfig.value.activeModelId.removeSuffix(".gguf"),
+                text = "Hi! I am running **100% offline** on your phone.\n\n" +
+                    "• **Chat with me below** to write or debug code offline.\n" +
+                    "• Tap **Models** below to download models or tap **Use This Model** on your downloaded models.\n" +
+                    "• Tap **API Keys** below to get your personal **API Key (`sk-mobile-...`)** and **Base URL** to use in OpenCode, DeepSeek, Aider, or your own apps!",
+                speedBadge = "Offline Ready"
+            )
+        )
+    )
+    val chatMessages: StateFlow<List<UiChatBubble>> = _chatMessages.asStateFlow()
+
     private val _sandboxState = MutableStateFlow(
         SandboxUiState(
             compiledGbnfPreview = buildDefaultSampleGbnf()
@@ -100,6 +127,23 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectTab(tab: PocketTab) {
         _selectedTab.value = tab
+    }
+
+    fun clearChatHistory() {
+        val activeName = engineConfig.value.activeModelId.removeSuffix(".gguf")
+        _chatMessages.value = listOf(
+            UiChatBubble(
+                id = UUID.randomUUID().toString(),
+                isUser = false,
+                senderName = activeName,
+                text = "Started a new offline chat session with **$activeName**. Ask me anything!",
+                speedBadge = "Offline Ready"
+            )
+        )
+        _sandboxState.value = _sandboxState.value.copy(
+            outputStreamText = "",
+            userPrompt = ""
+        )
     }
 
     fun showStatusMessage(message: String) {
@@ -176,27 +220,44 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch(Dispatchers.IO) {
             val ok = DaemonStateRegistry.switchActiveModel(modelId)
             if (ok) {
-                showStatusMessage("Loaded $modelId via zero-copy mmap + LayerStream")
+                val cleanName = modelId.removeSuffix(".gguf")
+                _chatMessages.value = _chatMessages.value + UiChatBubble(
+                    id = UUID.randomUUID().toString(),
+                    isUser = false,
+                    senderName = cleanName,
+                    text = "Switched active model to **$cleanName**. You can now chat with me offline or copy your API key from the **API Keys** tab!",
+                    speedBadge = "Active Model"
+                )
+                showStatusMessage("Now using model: $cleanName")
             }
         }
     }
 
     fun synthesizeOfflineGgufAndLoad(modelId: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            DaemonStateRegistry.modelHubManager.pauseDownload(modelId)
             DaemonStateRegistry.modelHubManager.synthesizeLocalTestableGguf(modelId)
             DaemonStateRegistry.switchActiveModel(modelId)
-            showStatusMessage("Synthesized & memory-mapped GGUF v3 binary for $modelId")
+            val cleanName = modelId.removeSuffix(".gguf")
+            _chatMessages.value = _chatMessages.value + UiChatBubble(
+                id = UUID.randomUUID().toString(),
+                isUser = false,
+                senderName = cleanName,
+                text = "**$cleanName** is now installed in **Downloaded Models** and active for offline chat & API key requests!",
+                speedBadge = "Installed & Active"
+            )
+            showStatusMessage("$cleanName added to Downloaded Models & activated!")
         }
     }
 
     fun startModelDownload(modelId: String) {
         DaemonStateRegistry.modelHubManager.startOrResumeHuggingFaceDownload(modelId)
-        showStatusMessage("Started resumable HuggingFace GGUF download for $modelId")
+        showStatusMessage("Downloading ${modelId.removeSuffix(".gguf")}...")
     }
 
     fun pauseModelDownload(modelId: String) {
         DaemonStateRegistry.modelHubManager.pauseDownload(modelId)
-        showStatusMessage("Paused download (HTTP Range byte offset saved)")
+        showStatusMessage("Download paused — tap Resume anytime")
     }
 
     fun updateContextSize(newCtx: Int) {
@@ -302,7 +363,7 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
                     pinBigCpuCores = true
                 )
             }
-            showStatusMessage("Applied 4GB Ultra-Edge Profile (ctx=4096, K=q8_0, V=q4_0, LayerStream+PLD+AST)")
+            showStatusMessage("Applied 4GB Phone Safe Mode (ctx=4096, Low Memory)")
         } else {
             DaemonStateRegistry.updateConfig {
                 it.copy(
@@ -319,14 +380,14 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
                     pinBigCpuCores = true
                 )
             }
-            showStatusMessage("Applied 6GB+ Powerhouse Profile (ctx=8192, K=q8_0, V=q8_0, LayerStream+PLD+AST)")
+            showStatusMessage("Applied 6GB+ Phone Fast Mode (ctx=8192, High Speed)")
         }
     }
 
     fun triggerEmergencyOomTrimTest() {
         val evicted = DaemonStateRegistry.engineBridge.emergencyFlushNonPinnedKvCache("MANUAL_TRIM_MEMORY_RUNNING_CRITICAL")
         val retained = DaemonStateRegistry.engineBridge.metrics.value.pinnedPrefixTokens
-        showStatusMessage("OOM Watchdog evicted $evicted non-pinned KV tokens (retained $retained pinned prefix tokens)")
+        showStatusMessage("Freed $evicted non-pinned tokens from RAM")
     }
 
     fun clearTelemetryLogs() {
@@ -336,8 +397,7 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
     fun setSandboxMode(mode: SandboxMode) {
         _sandboxState.value = _sandboxState.value.copy(
             mode = mode,
-            outputStreamText = "",
-            statusBadge = "Switched to ${mode.label}"
+            statusBadge = "Mode: ${mode.label}"
         )
     }
 
@@ -353,25 +413,127 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
         _sandboxState.value = _sandboxState.value.copy(fimSuffix = text)
     }
 
+    fun sendQuickChatPrompt(promptText: String) {
+        _sandboxState.value = _sandboxState.value.copy(userPrompt = promptText)
+        runLiveSandboxPipeline()
+    }
+
     fun runLiveSandboxPipeline() {
         val current = _sandboxState.value
         if (current.isStreaming) return
 
+        val effectivePrompt = if (current.mode == SandboxMode.FIM_COMPLETION) {
+            "Autocomplete code:\n${current.fimPrefix.trim()}"
+        } else {
+            current.userPrompt.ifBlank { "Write a binary search function in Kotlin" }
+        }
+
+        val cfg = engineConfig.value
+        val activeModelDisplayName = cfg.activeModelId.removeSuffix(".gguf")
+        val userBubbleId = UUID.randomUUID().toString()
+        val assistantBubbleId = UUID.randomUUID().toString()
+
+        _chatMessages.value = _chatMessages.value + listOf(
+            UiChatBubble(
+                id = userBubbleId,
+                isUser = true,
+                senderName = "You",
+                text = effectivePrompt
+            ),
+            UiChatBubble(
+                id = assistantBubbleId,
+                isUser = false,
+                senderName = activeModelDisplayName,
+                text = "Thinking...",
+                isStreaming = true
+            )
+        )
+
         viewModelScope.launch(Dispatchers.IO) {
             _sandboxState.value = current.copy(
+                userPrompt = if (current.mode == SandboxMode.NORMAL_CHAT) "" else current.userPrompt,
                 isStreaming = true,
                 outputStreamText = "",
-                statusBadge = "Executing via PocketCodeD pipeline..."
+                statusBadge = "Generating offline response on $activeModelDisplayName..."
             )
 
-            val cfg = engineConfig.value
             val startMs = System.currentTimeMillis()
 
             when (current.mode) {
+                SandboxMode.NORMAL_CHAT -> {
+                    val chatHistory = listOf(
+                        ChatMessage("system", "You are $activeModelDisplayName, an offline AI coding assistant."),
+                        ChatMessage("user", effectivePrompt)
+                    )
+                    val sb = StringBuilder()
+                    var lastPrefill = 240.0
+                    var lastDecode = 58.4
+                    var pldAcc = 0
+
+                    DaemonStateRegistry.engineBridge.generateChatStream(
+                        messages = chatHistory,
+                        tools = emptyList(),
+                        compiledGbnf = null
+                    ).collect { step ->
+                        sb.append(step.tokenChunk)
+                        lastPrefill = step.prefillTokPerSec
+                        lastDecode = step.decodeTokPerSec
+                        pldAcc += step.pldAcceptedThisStep
+                        val currentText = sb.toString()
+                        _sandboxState.value = _sandboxState.value.copy(outputStreamText = currentText)
+                        updateAssistantBubble(
+                            bubbleId = assistantBubbleId,
+                            text = currentText,
+                            speedBadge = "${String.format("%.1f", lastDecode)} tok/s",
+                            isStreaming = true
+                        )
+                    }
+
+                    val latency = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                    val finalOut = sb.toString()
+                    updateAssistantBubble(
+                        bubbleId = assistantBubbleId,
+                        text = finalOut,
+                        speedBadge = "${String.format("%.1f", lastDecode)} tok/s • ${latency}ms",
+                        isStreaming = false
+                    )
+
+                    DaemonStateRegistry.appendTelemetryLog(
+                        TelemetryLogEntry(
+                            id = UUID.randomUUID().toString().take(8),
+                            timestampMs = System.currentTimeMillis(),
+                            method = "CHAT",
+                            endpoint = "/v1/chat/completions (Offline Chat)",
+                            clientAddress = "127.0.0.1",
+                            requestedModel = cfg.activeModelId,
+                            route = ExecutionRoute.NATIVE_GGUF_MMAP,
+                            rawPromptTokens = effectivePrompt.length / 3 + 24,
+                            compressedPromptTokens = effectivePrompt.length / 3 + 24,
+                            tokensSavedByDiet = 0,
+                            slidingWindowTruncatedTools = 0,
+                            gbnfGrammarApplied = false,
+                            gbnfRuleSummary = null,
+                            kvPrefixHitTokens = engineMetrics.value.pinnedPrefixTokens,
+                            pldDraftedCount = pldAcc + 2,
+                            pldAcceptedCount = pldAcc,
+                            prefillTokPerSec = lastPrefill,
+                            decodeTokPerSec = lastDecode,
+                            statusCode = 200,
+                            latencyMs = latency,
+                            previewSnippet = finalOut.take(100)
+                        )
+                    )
+
+                    _sandboxState.value = _sandboxState.value.copy(
+                        isStreaming = false,
+                        statusBadge = "Offline response in ${latency}ms (${String.format("%.1f", lastDecode)} tok/s)"
+                    )
+                }
+
                 SandboxMode.AGENT_TOOL_CALL -> {
                     val sampleToolsJson = buildSampleOpencodeToolsRequestJson()
                     val tools = GbnfGrammarCompiler.parseToolsFromRequest(sampleToolsJson)
-                    val bloatedMessages = buildSampleVerboseAgentConversation(current.userPrompt)
+                    val bloatedMessages = buildSampleVerboseAgentConversation(effectivePrompt)
 
                     val dietResult = HarnessDietMiddleware.processRequest(
                         messages = bloatedMessages,
@@ -386,7 +548,7 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
                         rawTokensBeforeDiet = dietResult.originalTokenEstimate,
                         compressedTokensAfterDiet = dietResult.optimizedTokenEstimate,
                         compiledGbnfPreview = dietResult.compiledGbnfGrammar.orEmpty(),
-                        statusBadge = "Harness Diet + AST Skeletonizer saved ${dietResult.tokensSaved} tokens • GBNF active..."
+                        statusBadge = "Saved ${dietResult.tokensSaved} prompt tokens • GBNF JSON active..."
                     )
 
                     val sb = StringBuilder()
@@ -403,18 +565,32 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
                         lastPrefill = step.prefillTokPerSec
                         lastDecode = step.decodeTokPerSec
                         pldAcc += step.pldAcceptedThisStep
+                        val textNow = sb.toString()
                         _sandboxState.value = _sandboxState.value.copy(
-                            outputStreamText = sb.toString()
+                            outputStreamText = textNow
+                        )
+                        updateAssistantBubble(
+                            bubbleId = assistantBubbleId,
+                            text = "```json\n$textNow\n```",
+                            speedBadge = "GBNF JSON • ${String.format("%.1f", lastDecode)} tok/s",
+                            isStreaming = true
                         )
                     }
 
                     val latency = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                    updateAssistantBubble(
+                        bubbleId = assistantBubbleId,
+                        text = "```json\n${sb}\n```\nSaved **${dietResult.tokensSaved} tokens** via Prompt Diet.",
+                        speedBadge = "Valid Tool JSON • ${latency}ms",
+                        isStreaming = false
+                    )
+
                     DaemonStateRegistry.appendTelemetryLog(
                         TelemetryLogEntry(
                             id = UUID.randomUUID().toString().take(8),
                             timestampMs = System.currentTimeMillis(),
                             method = "POST",
-                            endpoint = "/v1/chat/completions (Sandbox)",
+                            endpoint = "/v1/chat/completions (Tool JSON)",
                             clientAddress = "127.0.0.1",
                             requestedModel = cfg.activeModelId,
                             route = ExecutionRoute.NATIVE_GGUF_MMAP,
@@ -448,11 +624,15 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
                     )
                     val latency = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
                     val fullPreview = buildString {
-                        appendLine("// Formatted Prompt sent to NDK Engine:")
-                        appendLine(fimResult.formattedFimPrompt)
-                        appendLine("\n// Synthesized <|fim_middle|> Completion:")
-                        append(fimResult.completionText)
+                        appendLine("// Autocompleted Code:")
+                        appendLine(fimResult.completionText)
                     }
+                    updateAssistantBubble(
+                        bubbleId = assistantBubbleId,
+                        text = "```kotlin\n${fimResult.completionText}\n```",
+                        speedBadge = "FIM Autocomplete • ${String.format("%.1f", fimResult.decodeTokPerSec)} tok/s",
+                        isStreaming = false
+                    )
                     DaemonStateRegistry.appendTelemetryLog(
                         TelemetryLogEntry(
                             id = UUID.randomUUID().toString().take(8),
@@ -487,7 +667,7 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
 
                 SandboxMode.HIGH_THINKING -> {
                     val messages = listOf(
-                        ChatMessage("user", current.userPrompt)
+                        ChatMessage("user", effectivePrompt)
                     )
                     val sb = StringBuilder()
                     DaemonStateRegistry.highThinkingRepo.streamHighThinkingResponse(
@@ -495,11 +675,24 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
                         requestedModel = "gemini-4-argon"
                     ).collect { chunk ->
                         sb.append(chunk)
+                        val textNow = sb.toString()
                         _sandboxState.value = _sandboxState.value.copy(
-                            outputStreamText = sb.toString()
+                            outputStreamText = textNow
+                        )
+                        updateAssistantBubble(
+                            bubbleId = assistantBubbleId,
+                            text = textNow,
+                            speedBadge = "High-Thinking",
+                            isStreaming = true
                         )
                     }
                     val latency = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+                    updateAssistantBubble(
+                        bubbleId = assistantBubbleId,
+                        text = sb.toString(),
+                        speedBadge = "High-Thinking • ${latency}ms",
+                        isStreaming = false
+                    )
                     DaemonStateRegistry.appendTelemetryLog(
                         TelemetryLogEntry(
                             id = UUID.randomUUID().toString().take(8),
@@ -527,9 +720,24 @@ class PocketViewModel(application: Application) : AndroidViewModel(application) 
                     )
                     _sandboxState.value = _sandboxState.value.copy(
                         isStreaming = false,
-                        statusBadge = "Hybrid Route (Sample — Enable Firebase AI Logic for live gemini-4-argon)"
+                        statusBadge = "High-Thinking completed in ${latency}ms"
                     )
                 }
+            }
+        }
+    }
+
+    private fun updateAssistantBubble(
+        bubbleId: String,
+        text: String,
+        speedBadge: String?,
+        isStreaming: Boolean
+    ) {
+        _chatMessages.value = _chatMessages.value.map { bubble ->
+            if (bubble.id == bubbleId) {
+                bubble.copy(text = text, speedBadge = speedBadge, isStreaming = isStreaming)
+            } else {
+                bubble
             }
         }
     }

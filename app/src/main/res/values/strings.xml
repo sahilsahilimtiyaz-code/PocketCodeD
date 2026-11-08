@@ -5,9 +5,9 @@
     <string name="daemon_notification_title">PocketCodeD Active • Port %1$d</string>
     <string name="daemon_notification_text">Model: %1$s | KV: %2$s/%3$s | %4$.1f tok/s</string>
     <string name="action_stop_daemon">Stop Daemon</string>
-    <string name="tab_control_deck">Home &amp; API</string>
-    <string name="tab_model_tuner">AI Models</string>
-    <string name="tab_sandbox">Test AI</string>
+    <string name="tab_control_deck">API Keys</string>
+    <string name="tab_model_tuner">Models</string>
+    <string name="tab_sandbox">AI Chat</string>
     <string name="tab_telemetry">Activity</string>
     <string name="firebase_high_thinking_notice">Gemini 4 Argon High-Thinking mode requires Firebase AI Logic. Local C++ GGUF inference is 100% active on-device.</string>
 </resources>
